@@ -1,0 +1,31 @@
+# FastAPI and web server dependencies
+fastapi[standard]>=0.116.0
+uvicorn[standard]>=0.30.0
+starlette>=0.48.0
+
+# Redis and vector search dependencies
+redis>=4.6.0,<5.0.0
+
+# Machine Learning and embedding dependencies
+scikit-learn==1.2.2
+numpy==1.24.3
+scipy>=1.10.0,<2.0.0
+
+# Data handling and validation
+pydantic>=2.8.0
+pandas>=2.1.0
+
+# Configuration and environment
+python-dotenv>=1.0.0
+
+# Logging and monitoring
+loguru>=0.7.0
+prometheus-client>=0.21.0
+
+# Optional: For better embeddings (uncomment if needed)
+# sentence-transformers>=3.0.0
+# transformers>=4.40.0
+# torch>=2.0.0
+
+# Development and type checking
+typing-extensions>=4.12.0

@@ -1,0 +1,93 @@
+﻿# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Temporary and test files
+setup_*.py
+*_temp.py
+*.tmp
+
+# Virtual environments
+venv/
+venv_new/
+env/
+ENV/
+.venv/
+.env
+
+# Package managers
+node_modules/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Logs
+logs/
+*.log
+
+# Local development settings
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Model cache directory
+model_cache/
+
+# Redis data
+dump.rdb
+appendonly.aof
+*.rdb
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Documentation and settings
+*claude.md
+.claude/
+settings.json
+local.json
+config.local.json
+.vscode/settings.json
+
+# Project documentation files
+AGENTS.md
+DEMO_GUIDE.md
+*_GUIDE.md
+INTEGRATION_GUIDE.md
+
+# Demo and test artifacts
+demo_*.py
+*demo*.py
+test_*.py
+*_test.py
+playwright_*.py
+streamlit_*.py
+demos/
+gradio_*.py
+
+# Windows device artifacts
+nul

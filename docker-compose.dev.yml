@@ -1,0 +1,115 @@
+version: '3.8'
+
+# Development docker-compose with hot-reload and development tools
+
+services:
+  # Redis service with RedisSearch module
+  redis:
+    image: redis/redis-stack-server:7.2.0-v7
+    container_name: realtime-ai-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    command: >
+      redis-stack-server
+      --appendonly yes
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ai-recommender-network
+    restart: unless-stopped
+
+  # FastAPI Application (Development with hot-reload)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: realtime-ai-api-dev
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG_MODE=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app  # Mount code for hot-reload
+      - model_cache_dev:/app/model_cache
+      - logs_dev:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-recommender-network
+    restart: unless-stopped
+    command: >
+      uvicorn api.app:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app
+      --log-level debug
+
+  # Stream Consumer (Development)
+  stream-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: realtime-ai-consumer-dev
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/app
+      - model_cache_dev:/app/model_cache
+      - logs_dev:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    networks:
+      - ai-recommender-network
+    restart: unless-stopped
+    command: python -m services.stream_consumer
+
+  # RedisInsight for Redis monitoring
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: realtime-ai-redisinsight-dev
+    ports:
+      - "8001:8001"
+    volumes:
+      - redisinsight_data_dev:/data
+    networks:
+      - ai-recommender-network
+    restart: unless-stopped
+
+networks:
+  ai-recommender-network:
+    driver: bridge
+
+volumes:
+  redis_data_dev:
+    driver: local
+  model_cache_dev:
+    driver: local
+  logs_dev:
+    driver: local
+  redisinsight_data_dev:
+    driver: local
+

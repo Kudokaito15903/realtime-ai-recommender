@@ -1,0 +1,1 @@
+# Modern stack adapters for cloud services

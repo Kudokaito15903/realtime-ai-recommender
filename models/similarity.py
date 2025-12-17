@@ -8,7 +8,7 @@ from loguru import logger
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.embeddings import get_embedding_model
-from services.vector_store import get_vector_store
+from adapters.factory import get_vector_store
 
 
 class SimilaritySearch:

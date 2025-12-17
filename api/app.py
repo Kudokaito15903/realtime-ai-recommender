@@ -2,7 +2,7 @@
 import os
 import sys
 import time
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import uvicorn
@@ -11,19 +11,19 @@ import uvicorn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import API_HOST, API_PORT, DEBUG_MODE
-from api.routes import products, recommendations
-from api.middleware.logging import LoggingMiddleware
+from api.routes import modern_products
+# from api.middleware.logging import LoggingMiddleware
 
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="E-commerce Real-time AI API",
-    description="API for real-time product analysis and recommendations",
-    version="1.0.0",
+    title="E-commerce Real-time AI API (Pinecone stack)",
+    description="API for real-time product analysis and recommendations powered by Pinecone",
+    version="2.0.0",
     debug=DEBUG_MODE
 )
 
-# Add CORS middleware
+# Add CORS middleware (optional - keep disabled by default)
 # app.add_middleware(
 #     CORSMiddleware,
 #     allow_origins=["*"],  # In production, restrict this to your frontend domain
@@ -31,13 +31,12 @@ app = FastAPI(
 #     allow_methods=["*"],
 #     allow_headers=["*"],
 # )
-
+#
 # # Add custom logging middleware
 # app.add_middleware(LoggingMiddleware)
 
-# Include routers
-app.include_router(products.router, prefix="/products", tags=["products"])
-app.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])
+# Include modern, backend-agnostic router (Pinecone + Supabase)
+app.include_router(modern_products.router, prefix="/products", tags=["products"])
 
 
 @app.get("/health")
@@ -59,7 +58,7 @@ async def add_process_time_header(request: Request, call_next):
 if __name__ == "__main__":
     # Configure logger
     logger.info(f"Starting API server on {API_HOST}:{API_PORT}")
-    
+
     # Start server
     uvicorn.run(
         "api.app:app",

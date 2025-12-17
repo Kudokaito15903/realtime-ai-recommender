@@ -20,19 +20,6 @@ def create_vector_store() -> VectorStoreInterface:
     if store_type == "pinecone":
         from .pinecone_adapter import get_pinecone_vector_store
         return get_pinecone_vector_store()
-
-    elif store_type == "redis":
-        from services.vector_store import get_vector_store
-        return get_vector_store()
-
-    elif store_type == "qdrant":
-        # Future implementation
-        raise NotImplementedError("Qdrant adapter not implemented yet")
-
-    elif store_type == "chroma":
-        # Future implementation
-        raise NotImplementedError("Chroma adapter not implemented yet")
-
     else:
         raise ValueError(f"Unknown vector store type: {store_type}")
 
@@ -46,11 +33,6 @@ def create_event_processor() -> EventProcessorInterface:
     if processor_type == "supabase":
         from .supabase_adapter import get_supabase_event_processor
         return get_supabase_event_processor()
-
-    elif processor_type == "redis":
-        # We need to create a Redis adapter that implements the interface
-        from .redis_adapter import RedisEventProcessor
-        return RedisEventProcessor()
 
     elif processor_type == "nats":
         # Future implementation

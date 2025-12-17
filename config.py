@@ -9,12 +9,13 @@ load_dotenv()
 # ================================
 
 # Backend type selection: 'redis', 'cloud', 'hybrid'
-BACKEND_TYPE = os.getenv("BACKEND_TYPE", "redis")
+# Default to cloud-native stack using Pinecone (vector store) + Supabase (events/data)
+BACKEND_TYPE = os.getenv("BACKEND_TYPE", "cloud")
 
 # Component-specific backend selection
-VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "redis")  # redis, pinecone, qdrant, chroma
-EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "redis")  # redis, supabase, nats, memory
-DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "redis")  # redis, supabase, postgresql, sqlite
+VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "pinecone")  # redis, pinecone, qdrant, chroma
+EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "supabase")  # redis, supabase, nats, memory
+DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "supabase")  # redis, supabase, postgresql, sqlite
 
 # ================================
 # CLOUD SERVICES CONFIGURATION
@@ -76,11 +77,11 @@ class Config:
         # Load environment variables
         load_dotenv()
 
-        # Backend configuration
-        self.BACKEND_TYPE = os.getenv("BACKEND_TYPE", "redis")
-        self.VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "redis")
-        self.EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "redis")
-        self.DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "redis")
+        # Backend configuration (mirror module-level defaults)
+        self.BACKEND_TYPE = os.getenv("BACKEND_TYPE", BACKEND_TYPE)
+        self.VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", VECTOR_STORE_TYPE)
+        self.EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", EVENT_PROCESSOR_TYPE)
+        self.DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", DATA_STORE_TYPE)
 
         # Redis configuration
         self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")

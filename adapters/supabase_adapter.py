@@ -374,24 +374,114 @@ class SupabaseUserBehavior(UserBehaviorInterface):
             logger.error(f"Error getting popular products: {e}")
             return []
 
+    # ---------------------------------------------------------
+    # Optional methods for advanced recommenders (ALS/session)
+    # ---------------------------------------------------------
+    def get_recent_interactions(
+        self,
+        limit: int = 10000,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """Return recent raw interaction events (views)"""
+        try:
+            # Supabase range is inclusive (start..end)
+            end = offset + limit - 1
+            result = (
+                self.client.table("user_views")
+                .select("user_id, product_id, timestamp")
+                .order("timestamp", desc=True)
+                .range(offset, end)
+                .execute()
+            )
+            return result.data or []
+        except Exception as e:
+            logger.error(f"Error getting recent interactions: {e}")
+            return []
+
+    def get_interaction_counts(self, limit: int = 50000) -> List[Dict[str, Any]]:
+        """
+        Return aggregated view counts per (user_id, product_id).
+        Uses client-side aggregation to avoid requiring SQL views/RPC.
+        """
+        try:
+            page_size = min(1000, max(1, limit))
+            offset = 0
+            counts: Dict[tuple, int] = {}
+
+            while offset < limit:
+                batch = self.get_recent_interactions(limit=page_size, offset=offset)
+                if not batch:
+                    break
+
+                for row in batch:
+                    user_id = row.get("user_id")
+                    product_id = row.get("product_id")
+                    if not user_id or not product_id:
+                        continue
+                    key = (user_id, product_id)
+                    counts[key] = counts.get(key, 0) + 1
+
+                offset += page_size
+
+            return [
+                {"user_id": user_id, "product_id": product_id, "count": cnt}
+                for (user_id, product_id), cnt in counts.items()
+            ]
+
+        except Exception as e:
+            logger.error(f"Error getting interaction counts: {e}")
+            return []
+
     def _update_category_popularity(self, product_id: str) -> None:
         """Update category popularity based on product view"""
         try:
-            # Get product category
-            product = self.get_product(product_id)
-            if product and product.get('category'):
-                category = product['category']
+            category = self._get_product_category(product_id)
+            if not category:
+                return
 
-                # Increment category view count (would need proper implementation)
-                # This is a simplified version
-                self.client.table('category_popularity').upsert({
-                    'category': category,
-                    'view_count': 1,  # This should be incremented properly
-                    'last_updated': datetime.utcnow().isoformat()
-                }, on_conflict='category').execute()
+            # Best-effort increment (may race under concurrent updates)
+            current = (
+                self.client.table("category_popularity")
+                .select("view_count")
+                .eq("category", category)
+                .limit(1)
+                .execute()
+            )
+            current_count = 0
+            if current.data and len(current.data) > 0:
+                try:
+                    current_count = int(current.data[0].get("view_count") or 0)
+                except Exception:
+                    current_count = 0
+
+            self.client.table("category_popularity").upsert(
+                {
+                    "category": category,
+                    "view_count": current_count + 1,
+                    "last_updated": datetime.utcnow().isoformat(),
+                },
+                on_conflict="category",
+            ).execute()
 
         except Exception as e:
             logger.error(f"Error updating category popularity: {e}")
+
+    def _get_product_category(self, product_id: str) -> Optional[str]:
+        """Lookup product category from Supabase products table."""
+        try:
+            result = (
+                self.client.table("products")
+                .select("category")
+                .eq("product_id", product_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0].get("category")
+            return None
+        except Exception as e:
+            logger.error(f"Error looking up product category for {product_id}: {e}")
+            return None
 
 
 # Factory functions

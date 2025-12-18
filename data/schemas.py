@@ -4,7 +4,27 @@ from datetime import datetime
 from pydantic import BaseModel, Field, validator
 import uuid
 
+class CloudServicesInfo(BaseModel):
+    pinecone_configured: bool
+    supabase_configured: bool
 
+
+class RuntimeStatus(BaseModel):
+    vector_store_ready: bool
+    event_processor_ready: bool
+    product_store_ready: bool
+    embedding_model_ready: bool
+
+
+class BackendInfoResponse(BaseModel):
+    vector_store: str
+    event_processor: str
+    product_store: str
+    user_behavior: str
+    backend_type: str
+    cloud_services: CloudServicesInfo
+    runtime_status: RuntimeStatus
+    vector_store_stats: bool = None
 class ProductBase(BaseModel):
     """Base model for product data"""
     name: str

@@ -1,85 +1,65 @@
-"""
-Factory functions to create the appropriate adapters based on configuration.
-This provides a unified interface to switch between different backends.
-"""
-
 import os
-from typing import Union
 from loguru import logger
+from typing import Dict
 
-from .interfaces import VectorStoreInterface, EventProcessorInterface, ProductStoreInterface
 import config
-
+from .interfaces import (
+    VectorStoreInterface,
+    EventProcessorInterface,
+    ProductStoreInterface,
+    UserBehaviorInterface,
+)
 
 def create_vector_store() -> VectorStoreInterface:
-    """Create vector store adapter based on configuration"""
     store_type = config.VECTOR_STORE_TYPE.lower()
-
     logger.info(f"Creating vector store: {store_type}")
 
     if store_type == "pinecone":
         from .pinecone_adapter import get_pinecone_vector_store
         return get_pinecone_vector_store()
-    else:
-        raise ValueError(f"Unknown vector store type: {store_type}")
+
+    raise ValueError(f"Unknown vector store type: {store_type}")
 
 
 def create_event_processor() -> EventProcessorInterface:
-    """Create event processor adapter based on configuration"""
     processor_type = config.EVENT_PROCESSOR_TYPE.lower()
-
     logger.info(f"Creating event processor: {processor_type}")
 
     if processor_type == "supabase":
         from .supabase_adapter import get_supabase_event_processor
         return get_supabase_event_processor()
 
-    elif processor_type == "nats":
-        # Future implementation
-        raise NotImplementedError("NATS adapter not implemented yet")
-
-    elif processor_type == "memory":
-        # Future implementation for in-memory event processing
-        raise NotImplementedError("Memory adapter not implemented yet")
-
-    else:
-        raise ValueError(f"Unknown event processor type: {processor_type}")
+    raise ValueError(f"Unknown event processor type: {processor_type}")
 
 
 def create_product_store() -> ProductStoreInterface:
-    """Create product store adapter based on configuration"""
     store_type = config.DATA_STORE_TYPE.lower()
-
     logger.info(f"Creating product store: {store_type}")
 
     if store_type == "supabase":
         from .supabase_adapter import get_supabase_product_store
         return get_supabase_product_store()
 
-    elif store_type == "postgresql":
-        # Future implementation for direct PostgreSQL
-        raise NotImplementedError("PostgreSQL adapter not implemented yet")
-
-    elif store_type == "sqlite":
-        # Future implementation for SQLite
-        raise NotImplementedError("SQLite adapter not implemented yet")
-
-    elif store_type == "redis":
-        # Future implementation for Redis hash storage
-        raise NotImplementedError("Redis product store adapter not implemented yet")
-
-    else:
-        raise ValueError(f"Unknown product store type: {store_type}")
+    raise ValueError(f"Unknown product store type: {store_type}")
 
 
-# Singleton instances for performance
-_vector_store_instance = None
-_event_processor_instance = None
-_product_store_instance = None
+def create_user_behavior() -> UserBehaviorInterface:
+    behavior_type = config.BEHAVIOR_STORE_TYPE.lower()
+    logger.info(f"Creating user behavior store: {behavior_type}")
+
+    if behavior_type == "supabase":
+        from .supabase_adapter import get_supabase_user_behavior
+        return get_supabase_user_behavior()
+
+    raise ValueError(f"Unknown user behavior store type: {behavior_type}")
+
+_vector_store_instance: VectorStoreInterface | None = None
+_event_processor_instance: EventProcessorInterface | None = None
+_product_store_instance: ProductStoreInterface | None = None
+_user_behavior_instance: UserBehaviorInterface | None = None
 
 
 def get_vector_store() -> VectorStoreInterface:
-    """Get singleton vector store instance"""
     global _vector_store_instance
     if _vector_store_instance is None:
         _vector_store_instance = create_vector_store()
@@ -87,7 +67,6 @@ def get_vector_store() -> VectorStoreInterface:
 
 
 def get_event_processor() -> EventProcessorInterface:
-    """Get singleton event processor instance"""
     global _event_processor_instance
     if _event_processor_instance is None:
         _event_processor_instance = create_event_processor()
@@ -95,31 +74,41 @@ def get_event_processor() -> EventProcessorInterface:
 
 
 def get_product_store() -> ProductStoreInterface:
-    """Get singleton product store instance"""
     global _product_store_instance
     if _product_store_instance is None:
         _product_store_instance = create_product_store()
     return _product_store_instance
 
 
-def reset_instances():
-    """Reset all singleton instances (useful for testing or configuration changes)"""
-    global _vector_store_instance, _event_processor_instance, _product_store_instance
+def get_user_behavior() -> UserBehaviorInterface:
+    global _user_behavior_instance
+    if _user_behavior_instance is None:
+        _user_behavior_instance = create_user_behavior()
+    return _user_behavior_instance
+
+def reset_instances() -> None:
+    global _vector_store_instance, _event_processor_instance, _product_store_instance, _user_behavior_instance
+
     _vector_store_instance = None
     _event_processor_instance = None
     _product_store_instance = None
-    logger.info("Reset all adapter instances")
+    _user_behavior_instance = None
+
+    logger.info("All adapter instances have been reset")
 
 
-def get_backend_info() -> dict:
+def get_backend_info() -> Dict:
     """Get information about current backend configuration"""
     return {
-        "backend_type": config.BACKEND_TYPE,
         "vector_store": config.VECTOR_STORE_TYPE,
         "event_processor": config.EVENT_PROCESSOR_TYPE,
-        "data_store": config.DATA_STORE_TYPE,
+        "product_store": config.DATA_STORE_TYPE,
+        "user_behavior": config.BEHAVIOR_STORE_TYPE,
+        "backend_type": config.BACKEND_TYPE,
         "cloud_services": {
             "pinecone_configured": bool(config.PINECONE_API_KEY),
-            "supabase_configured": bool(config.SUPABASE_URL and config.SUPABASE_SERVICE_ROLE_KEY)
-        }
+            "supabase_configured": bool(
+                config.SUPABASE_URL and config.SUPABASE_SERVICE_ROLE_KEY
+            ),
+        },
     }

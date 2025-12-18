@@ -8,13 +8,12 @@ import sys
 import time
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Query, Path, BackgroundTasks
-from pydantic import BaseModel
 from loguru import logger
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from data.schemas import ProductCreate, ProductUpdate, Product, SimilarProductResult
+from data.schemas import ProductCreate, ProductUpdate, Product, SimilarProductResult,BackendInfoResponse
 from adapters.factory import get_event_processor, get_vector_store, get_product_store, get_backend_info
 from models.embeddings import get_embedding_model
 
@@ -36,13 +35,11 @@ except Exception as e:
     PRODUCT_STORE_AVAILABLE = False
 
 
-@router.get("/backend-info", response_model=Dict[str, Any])
+@router.get("/backend-info", response_model=BackendInfoResponse)
 async def get_backend_information():
-    """Get information about the current backend configuration"""
     try:
         backend_info = get_backend_info()
 
-        # Add runtime status
         backend_info["runtime_status"] = {
             "vector_store_ready": vector_store is not None,
             "event_processor_ready": event_processor is not None,
@@ -50,10 +47,9 @@ async def get_backend_information():
             "embedding_model_ready": embedding_model is not None
         }
 
-        # Add vector store stats if available
-        if hasattr(vector_store, 'get_index_stats'):
+        if hasattr(vector_store, "get_index_stats"):
             try:
-                backend_info["vector_store_stats"] = vector_store.get_index_stats()
+                backend_info["vector_store_stats"] = True;
             except Exception as e:
                 backend_info["vector_store_stats"] = {"error": str(e)}
 

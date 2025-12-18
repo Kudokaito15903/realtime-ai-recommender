@@ -107,6 +107,21 @@ class UserBehaviorInterface(ABC):
         """Track a product view by user"""
         pass
 
+    # @abstractmethod
+    # def track_click(self, user_id: str, product_id: str) -> bool:
+    #     """Track a product view by user"""
+    #     pass
+
+    # @abstractmethod
+    # def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
+    #     """Track a product view by user"""
+    #     pass    
+
+    # @abstractmethod
+    # def track_purchase(self, user_id: str, product_id: str) -> bool:
+    #     """Track a product view by user"""
+    #     pass    
+    
     @abstractmethod
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Get user's recent product views"""
@@ -117,3 +132,27 @@ class UserBehaviorInterface(ABC):
                             limit: int = 10) -> List[Dict[str, Any]]:
         """Get popular products by view count"""
         pass
+
+    # ---------------------------------------------------------
+    # Optional methods (not all backends must implement)
+    # ---------------------------------------------------------
+    def get_recent_interactions(
+        self,
+        limit: int = 10000,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Optional: Return recent interaction events (e.g., views).
+        Expected keys per item: user_id, product_id, timestamp.
+        """
+        raise NotImplementedError
+
+    def get_interaction_counts(
+        self,
+        limit: int = 50000,
+    ) -> List[Dict[str, Any]]:
+        """
+        Optional: Return aggregated interaction counts for training CF models.
+        Expected keys per item: user_id, product_id, count.
+        """
+        raise NotImplementedError

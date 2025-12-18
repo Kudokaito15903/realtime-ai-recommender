@@ -9,7 +9,7 @@ from loguru import logger
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from data.schemas import ProductRecommendation, RecommendationResponse
+from data.schemas import RecommendationResponse
 from models.recommendations import get_product_recommender
 
 
@@ -18,7 +18,6 @@ router = APIRouter()
 
 # Initialize service
 product_recommender = get_product_recommender()
-
 
 @router.get("/{product_id}/similar", response_model=RecommendationResponse)
 async def get_product_recommendations(
@@ -84,15 +83,29 @@ async def get_category_recommendations(
 @router.get("/personalized", response_model=RecommendationResponse)
 async def get_personalized_recommendations(
     user_id: str = Header(..., description="User ID for personalization"),
-    limit: int = Query(10, description="Maximum number of recommendations to return")
+    limit: int = Query(10, description="Maximum number of recommendations to return"),
+    method: str = Query(
+        "hybrid",
+        description="Recommendation method: vector | als | session | hybrid",
+    ),
+    recent_k: int = Query(
+        5,
+        description="Number of recent interactions to use for session-based recommendations",
+    ),
 ):
     """Get personalized recommendations for a specific user"""
     try:
-        # Get personalized recommendations
-        recommendations = product_recommender.get_personalized_recommendations(
-            user_id=user_id,
-            limit=limit
-        )
+        m = (method or "hybrid").strip().lower()
+        if m == "vector":
+            recommendations = product_recommender.get_personalized_recommendations(user_id=user_id, limit=limit)
+        elif m == "als":
+            recommendations = product_recommender.get_als_recommendations(user_id=user_id, limit=limit, train_if_missing=True)
+        elif m == "session":
+            recommendations = product_recommender.get_session_based_recommendations(user_id=user_id, limit=limit, recent_k=recent_k)
+        elif m == "hybrid":
+            recommendations = product_recommender.get_hybrid_recommendations(user_id=user_id, limit=limit)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown method: {method}")
         
         # Create response
         response = RecommendationResponse(

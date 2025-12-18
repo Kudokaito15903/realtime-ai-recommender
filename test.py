@@ -219,3 +219,134 @@
 #     print(f"POST #{idx}: status={resp.status_code}, body={resp.text}")
 
 
+import random
+import string
+import requests
+from uuid import uuid4
+
+API_URL = "http://localhost:8000/products/"
+
+# -----------------------------
+# Base vocab for semantic search
+# -----------------------------
+CATEGORIES = {
+    "Electronics": {
+        "names": [
+            "Wireless Headphones",
+            "Bluetooth Earbuds",
+            "Noise Cancelling Headphones",
+            "Portable Speaker"
+        ],
+        "keywords": [
+            "wireless", "bluetooth", "noise cancelling",
+            "deep bass", "high quality sound", "long battery life"
+        ],
+        "attributes": lambda: {
+            "brand": random.choice(["SoundMax", "AudioPro", "BeatX"]),
+            "battery_life": random.choice(["20h", "24h", "30h"]),
+            "connectivity": "Bluetooth"
+        }
+    },
+    "Gaming Accessories": {
+        "names": [
+            "Gaming Mouse",
+            "Mechanical Keyboard",
+            "Gaming Headset"
+        ],
+        "keywords": [
+            "gaming", "rgb lighting", "high precision",
+            "ergonomic design", "fast response"
+        ],
+        "attributes": lambda: {
+            "brand": random.choice(["ProGamer", "HyperPlay"]),
+            "rgb": True,
+            "dpi": random.choice([8000, 12000, 16000])
+        }
+    },
+    "Wearables": {
+        "names": [
+            "Smart Watch",
+            "Fitness Tracker"
+        ],
+        "keywords": [
+            "heart rate monitoring", "sleep tracking",
+            "fitness", "gps", "waterproof"
+        ],
+        "attributes": lambda: {
+            "brand": random.choice(["FitLife", "HealthPlus"]),
+            "gps": random.choice([True, False]),
+            "waterproof": True
+        }
+    },
+    "Sportswear": {
+        "names": [
+            "Running Shoes",
+            "Training Shoes"
+        ],
+        "keywords": [
+            "lightweight", "breathable mesh",
+            "comfortable", "durable sole"
+        ],
+        "attributes": lambda: {
+            "brand": random.choice(["RunFast", "ActiveWear"]),
+            "material": "Mesh",
+            "gender": random.choice(["Men", "Women"])
+        }
+    }
+}
+
+
+def random_price(category):
+    if category == "Electronics":
+        return round(random.uniform(80, 300), 2)
+    if category == "Gaming Accessories":
+        return round(random.uniform(50, 200), 2)
+    if category == "Wearables":
+        return round(random.uniform(100, 250), 2)
+    return round(random.uniform(60, 150), 2)
+
+
+def generate_description(name, keywords):
+    selected = random.sample(keywords, k=3)
+    return (
+        f"{name} designed for modern users. "
+        f"Features {', '.join(selected)}. "
+        f"Perfect for everyday use and long-term comfort."
+    )
+
+
+def generate_product():
+    category = random.choice(list(CATEGORIES.keys()))
+    config = CATEGORIES[category]
+
+    name = random.choice(config["names"])
+    description = generate_description(name, config["keywords"])
+
+    return {
+        "id": str(uuid4()),
+        "name": name,
+        "description": description,
+        "category": category,
+        "price": random_price(category),
+        "sku": "SKU-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8)),
+        "attributes": config["attributes"]()
+    }
+
+
+def post_product(product):
+    response = requests.post(API_URL, json=product)
+    if response.status_code not in (200, 201):
+        print("❌ Failed:", response.status_code, response.text)
+    else:
+        print("✅ Created:", product["name"], "|", product["id"])
+
+
+def main(total=50):
+    print(f"🚀 Generating {total} products...\n")
+    for _ in range(total):
+        product = generate_product()
+        post_product(product)
+
+
+if __name__ == "__main__":
+    main(total=100)

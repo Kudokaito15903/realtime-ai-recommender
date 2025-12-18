@@ -16,6 +16,7 @@ BACKEND_TYPE = os.getenv("BACKEND_TYPE", "cloud")
 VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "pinecone")  # redis, pinecone, qdrant, chroma
 EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "supabase")  # redis, supabase, nats, memory
 DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "supabase")  # redis, supabase, postgresql, sqlite
+BEHAVIOR_STORE_TYPE=os.getenv("BEHAVIOR_STORE_TYPE", "supabase") 
 
 # ================================
 # CLOUD SERVICES CONFIGURATION
@@ -61,6 +62,25 @@ SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 
+# ================================
+# RECOMMENDER CONFIGURATION (ALS / Session)
+# ================================
+
+# ALS (implicit feedback) settings
+ALS_MODEL_PATH = os.getenv("ALS_MODEL_PATH", os.path.join(MODEL_CACHE_DIR, "als_model.npz"))
+ALS_FACTORS = int(os.getenv("ALS_FACTORS", 64))
+ALS_ITERATIONS = int(os.getenv("ALS_ITERATIONS", 15))
+ALS_REGULARIZATION = float(os.getenv("ALS_REGULARIZATION", 0.1))
+ALS_ALPHA = float(os.getenv("ALS_ALPHA", 40.0))
+ALS_TRAINING_INTERACTIONS_LIMIT = int(os.getenv("ALS_TRAINING_INTERACTIONS_LIMIT", 50000))
+ALS_REFRESH_SECONDS = int(os.getenv("ALS_REFRESH_SECONDS", 24 * 3600))  # 24h
+
+# Session-based recommendations
+SESSION_GAP_SECONDS = int(os.getenv("SESSION_GAP_SECONDS", 30 * 60))  # 30 minutes
+SESSION_TRANSITIONS_LIMIT = int(os.getenv("SESSION_TRANSITIONS_LIMIT", 20000))
+SESSION_TRANSITIONS_REFRESH_SECONDS = int(os.getenv("SESSION_TRANSITIONS_REFRESH_SECONDS", 5 * 60))  # 5m
+SESSION_RECENT_K = int(os.getenv("SESSION_RECENT_K", 5))
+
 # API Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", 8000))
@@ -82,6 +102,7 @@ class Config:
         self.VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", VECTOR_STORE_TYPE)
         self.EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", EVENT_PROCESSOR_TYPE)
         self.DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", DATA_STORE_TYPE)
+        self.BEHAVIOR_STORE_TYPE=os.getenv("BEHAVIOR_STORE_TYPE", BEHAVIOR_STORE_TYPE) 
 
         # Redis configuration
         self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")

@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16
+    container_name: realtime-ai-postgres
+    environment:
+      - POSTGRES_DB=realtime_ai
+      - POSTGRES_USER=realtime_ai
+      - POSTGRES_PASSWORD=realtime_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U realtime_ai -d realtime_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-recommender-network
+    restart: unless-stopped
   # Redis service with RedisSearch module for vector similarity search
   redis:
     image: redis/redis-stack-server:7.2.0-v7
@@ -37,6 +56,11 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=realtime_ai
+      - POSTGRES_USER=realtime_ai
+      - POSTGRES_PASSWORD=realtime_ai
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - DEBUG_MODE=false
@@ -47,6 +71,8 @@ services:
       - logs:/app/logs
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - ai-recommender-network
@@ -75,6 +101,11 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=realtime_ai
+      - POSTGRES_USER=realtime_ai
+      - POSTGRES_PASSWORD=realtime_ai
       - LOG_LEVEL=INFO
     volumes:
       - .:/app
@@ -84,6 +115,8 @@ services:
       redis:
         condition: service_healthy
       api:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - ai-recommender-network
@@ -118,5 +151,7 @@ volumes:
   logs:
     driver: local
   redisinsight_data:
+    driver: local
+  postgres_data:
     driver: local
 

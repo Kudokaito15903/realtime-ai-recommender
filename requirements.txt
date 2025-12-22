@@ -13,6 +13,7 @@ numpy
 scipy
 pinecone
 supabase
+psycopg2-binary
 # Data handling và validation
 pydantic
 pandas

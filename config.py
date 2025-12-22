@@ -9,14 +9,14 @@ load_dotenv()
 # ================================
 
 # Backend type selection: 'redis', 'cloud', 'hybrid'
-# Default to cloud-native stack using Pinecone (vector store) + Supabase (events/data)
-BACKEND_TYPE = os.getenv("BACKEND_TYPE", "cloud")
+# Default to hybrid stack: Pinecone (vector store) + Postgres (events/data) + Redis (legacy/caching)
+BACKEND_TYPE = os.getenv("BACKEND_TYPE", "hybrid")
 
 # Component-specific backend selection
 VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "pinecone")  # redis, pinecone, qdrant, chroma
-EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "supabase")  # redis, supabase, nats, memory
-DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "supabase")  # redis, supabase, postgresql, sqlite
-BEHAVIOR_STORE_TYPE=os.getenv("BEHAVIOR_STORE_TYPE", "supabase") 
+EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "postgres")  # redis, supabase, nats, memory, postgres
+DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "postgres")  # redis, supabase, postgresql, sqlite
+BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 
 # ================================
 # CLOUD SERVICES CONFIGURATION
@@ -27,10 +27,17 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "product-recommendations")
 
-# Supabase Configuration
+# Supabase Configuration (optional, kept for backward compatibility)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+# PostgreSQL Configuration (self-hosted)
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
+POSTGRES_DB = os.getenv("POSTGRES_DB", "realtime_ai")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "realtime_ai")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "realtime_ai")
 
 # ================================
 # LEGACY REDIS CONFIGURATION

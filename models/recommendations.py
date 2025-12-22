@@ -267,7 +267,7 @@ class ProductRecommender:
             {"product_id": pid, "score": float(score), "recommendation_type": "als"}
             for pid, score in ranked
         ]
-
+    
     # ---------------------------------------------------------
     # Session-based recommendations (recent interactions)
     # ---------------------------------------------------------

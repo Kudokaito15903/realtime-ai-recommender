@@ -3,6 +3,25 @@ version: '3.8'
 # Development docker-compose with hot-reload and development tools
 
 services:
+  postgres:
+    image: postgres:16
+    container_name: realtime-ai-postgres-dev
+    environment:
+      - POSTGRES_DB=realtime_ai
+      - POSTGRES_USER=realtime_ai
+      - POSTGRES_PASSWORD=realtime_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U realtime_ai -d realtime_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-recommender-network
+    restart: unless-stopped
   # Redis service with RedisSearch module
   redis:
     image: redis/redis-stack-server:7.2.0-v7
@@ -39,6 +58,11 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=realtime_ai
+      - POSTGRES_USER=realtime_ai
+      - POSTGRES_PASSWORD=realtime_ai
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - DEBUG_MODE=true
@@ -49,6 +73,8 @@ services:
       - logs_dev:/app/logs
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - ai-recommender-network
@@ -72,6 +98,11 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=realtime_ai
+      - POSTGRES_USER=realtime_ai
+      - POSTGRES_PASSWORD=realtime_ai
       - LOG_LEVEL=DEBUG
     volumes:
       - .:/app
@@ -82,6 +113,8 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - ai-recommender-network
     restart: unless-stopped
@@ -111,5 +144,7 @@ volumes:
   logs_dev:
     driver: local
   redisinsight_data_dev:
+    driver: local
+  postgres_data_dev:
     driver: local
 

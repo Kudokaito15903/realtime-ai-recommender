@@ -32,6 +32,18 @@ class ProductBase(BaseModel):
     category: str
     price: float
     sku: str
+
+    # Optional/semantic fields used in embeddings and ranking
+    color: Optional[str] = None
+    listPrice: Optional[float] = None
+    sold: Optional[int] = None
+    avgRating: Optional[float] = None
+    videoUrl: Optional[str] = None
+    categoryId: Optional[str] = None
+    specifications: Optional[Dict[str, Any]] = None
+    thumbnail: Optional[str] = None
+    imageList: Optional[List[str]] = None
+
     attributes: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -52,6 +64,15 @@ class ProductUpdate(BaseModel):
     category: Optional[str] = None
     price: Optional[float] = None
     sku: Optional[str] = None
+    color: Optional[str] = None
+    listPrice: Optional[float] = None
+    sold: Optional[int] = None
+    avgRating: Optional[float] = None
+    videoUrl: Optional[str] = None
+    categoryId: Optional[str] = None
+    specifications: Optional[Dict[str, Any]] = None
+    thumbnail: Optional[str] = None
+    imageList: Optional[List[str]] = None
     attributes: Optional[Dict[str, Any]] = None
 
 
@@ -75,6 +96,13 @@ class SimilarProductResult(BaseModel):
     """Model for similar product search result"""
     product_id: str
     similarity_score: float
+    sold: Optional[int] = None
+    avgRating: Optional[float] = None
+    price: Optional[float] = None
+    listPrice: Optional[float] = None
+    category: Optional[str] = None
+    thumbnail: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ProductRecommendation(BaseModel):

@@ -7,7 +7,7 @@ starlette
 redis
 sentence-transformers
 torch
-
+psycopg2-binary
 # Machine Learning và embedding dependencies
 numpy
 scipy

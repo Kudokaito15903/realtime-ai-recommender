@@ -8,12 +8,15 @@ redis
 sentence-transformers
 torch
 psycopg2-binary
+
 # Machine Learning và embedding dependencies
 numpy
 scipy
 pinecone
 supabase
-psycopg2-binary
+implicit
+scikit-learn
+
 # Data handling và validation
 pydantic
 pandas

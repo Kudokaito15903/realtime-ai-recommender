@@ -154,7 +154,7 @@ ALS_RECENCY_HALF_LIFE_DAYS=30.0
 ### Ví Dụ Sử Dụng
 
 ```python
-from utils.feature_engineering import apply_temporal_weighting
+from offline.als.interaction_features import apply_temporal_weighting
 
 interactions = [
     {
@@ -186,7 +186,7 @@ weighted = apply_temporal_weighting(
 Thêm features về tần suất tương tác trong một khoảng thời gian.
 
 ```python
-from utils.feature_engineering import add_frequency_features
+from offline.als.interaction_features import add_frequency_features
 
 interactions = add_frequency_features(
     interactions,
@@ -203,7 +203,7 @@ interactions = add_frequency_features(
 Thêm thông tin category của sản phẩm.
 
 ```python
-from utils.feature_engineering import add_category_features
+from offline.als.interaction_features import add_category_features
 from adapters.factory import get_product_store
 
 product_store = get_product_store()
@@ -240,7 +240,7 @@ Model trainer sẽ:
 from models.als_recommender import train_implicit_als, ALSSettings
 from utils.data_quality import validate_interactions
 from utils.normalization import apply_normalization_to_interactions
-from utils.feature_engineering import apply_temporal_weighting
+from offline.als.interaction_features import apply_temporal_weighting
 
 # 1. Load interactions
 interactions = behavior.get_interaction_counts(limit=50000)
@@ -349,9 +349,10 @@ Applied log normalization: min=0.0000, max=4.6151
 
 - `utils/data_quality.py` - Data quality checks
 - `utils/normalization.py` - Normalization methods
-- `utils/feature_engineering.py` - Feature engineering
-- `models/als_recommender.py` - Training với các tính năng mới
-- `services/model_trainer.py` - Training entrypoint
+- `offline/als/interaction_features.py` - Feature engineering
+- `domain/recommenders/als_recommender.py` - Training với các tính năng mới
+- `offline/als/train_als.py` - Training entrypoint
+- `services/model_trainer.py` - Alternative training entrypoint
 
 ---
 

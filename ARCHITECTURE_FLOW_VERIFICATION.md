@@ -236,32 +236,26 @@ Export to model_cache
    - ⚠️ **CHƯA ĐỦ CHI TIẾT**: Bạn chỉ nói "Feature Engineering" nhưng không liệt kê các sub-steps
    - ✅ **CẦN BỔ SUNG**: Feature Engineering gồm 4 sub-steps riêng biệt
    
-   **Chi tiết các sub-steps** (`offline/als/interaction_features.py` và `utils/feature_engineering.py`):
+   **Chi tiết các sub-steps** (`offline/als/interaction_features.py`):
    ```
    Feature Engineering Pipeline:
    ├─→ 1. Temporal Weighting (apply_temporal_weighting)
    │     └─→ Apply exponential decay: weight = 2^(-age / half_life)
    │     └─→ Recent interactions get higher weights
    │     └─→ Config: ALS_RECENCY_HALF_LIFE_DAYS (default: 30 days)
-   │     └─→ Files: 
-   │           • offline/als/interaction_features.py (lines 15-72)
-   │           • utils/feature_engineering.py (lines 15-83)
+   │     └─→ File: offline/als/interaction_features.py
    │
    ├─→ 2. Frequency Features (add_frequency_features)
    │     └─→ Calculate user_frequency: tổng interactions của user
    │     └─→ Calculate product_frequency: tổng interactions của product
    │     └─→ Add fields: user_frequency, product_frequency
-   │     └─→ Files:
-   │           • offline/als/interaction_features.py (lines 75-117)
-   │           • utils/feature_engineering.py (lines 86-154)
+   │     └─→ File: offline/als/interaction_features.py
    │
    ├─→ 3. Category Features (add_category_features)
    │     └─→ Fetch product category từ ProductStore
    │     └─→ Add field: category
    │     └─→ Uses caching để tránh duplicate queries
-   │     └─→ Files:
-   │           • offline/als/interaction_features.py (lines 120-167)
-   │           • utils/feature_engineering.py (lines 157-205)
+   │     └─→ File: offline/als/interaction_features.py
    │
    └─→ 4. Interaction Type Weighting (apply_interaction_type_weighting)
          └─→ Apply different weights cho different interaction types
@@ -270,8 +264,7 @@ Export to model_cache
              • add_to_cart: 3.0
              • click: 2.0
              • view: 1.0
-         └─→ Files:
-               • offline/als/interaction_features.py (lines 170-214)
+         └─→ File: offline/als/interaction_features.py
    ```
    
    **Thứ tự thực hiện** (`offline/als/train_als.py`, lines 86-115):
@@ -505,7 +498,6 @@ Save Model (save_als_model)
 ### OFFLINE:
 - `offline/als/train_als.py` - Training entrypoint
 - `offline/als/interaction_features.py` - Feature engineering (temporal, frequency, category, type)
-- `utils/feature_engineering.py` - Feature engineering utilities (alternative implementation)
 - `utils/data_quality.py` - Data quality filtering (validate_interactions)
 - `utils/normalization.py` - Normalization methods (normalize_counts)
 - `domain/recommenders/als_recommender.py` - ALS training logic
@@ -562,7 +554,6 @@ Save Model (save_als_model)
 **Files đã tham khảo:**
 - `utils/data_quality.py` - Data quality filtering
 - `utils/normalization.py` - Normalization methods
-- `utils/feature_engineering.py` - Feature engineering utilities
 - `offline/als/interaction_features.py` - Feature engineering implementation
 - `services/recommendation_service.py` - REALTIME flow chi tiết
 

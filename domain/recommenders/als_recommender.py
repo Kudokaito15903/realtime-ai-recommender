@@ -8,7 +8,6 @@ import numpy as np
 from loguru import logger
 from scipy import sparse
 from implicit.als import AlternatingLeastSquares
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 @dataclass(frozen=True)

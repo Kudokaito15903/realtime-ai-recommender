@@ -58,11 +58,11 @@ realtime-ai-recommender/
 │       └── offline_metrics.py          # Offline evaluation metrics
 │
 ├── utils/                      # Stateless helpers
-│   ├── time_utils.py                   # Time utilities
 │   ├── normalization.py                # Data normalization
 │   ├── metrics.py                      # Metrics collection
 │   ├── logging.py                      # Logging utilities
-│   └── data_quality.py                 # Data quality checks
+│   ├── data_quality.py                 # Data quality checks
+│   └── ab_testing.py                   # A/B testing utilities
 │
 ├── model_cache/                # Trained model storage
 ├── data/                       # Data schemas and models

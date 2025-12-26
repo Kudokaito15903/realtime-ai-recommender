@@ -107,20 +107,20 @@ class UserBehaviorInterface(ABC):
         """Track a product view by user"""
         pass
 
-    # @abstractmethod
-    # def track_click(self, user_id: str, product_id: str) -> bool:
-    #     """Track a product view by user"""
-    #     pass
+    @abstractmethod
+    def track_click(self, user_id: str, product_id: str) -> bool:
+        """Track a product click by user"""
+        pass
 
-    # @abstractmethod
-    # def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
-    #     """Track a product view by user"""
-    #     pass    
+    @abstractmethod
+    def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
+        """Track a product add-to-cart by user"""
+        pass
 
-    # @abstractmethod
-    # def track_purchase(self, user_id: str, product_id: str) -> bool:
-    #     """Track a product view by user"""
-    #     pass    
+    @abstractmethod
+    def track_purchase(self, user_id: str, product_id: str) -> bool:
+        """Track a product purchase by user"""
+        pass
     
     @abstractmethod
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:

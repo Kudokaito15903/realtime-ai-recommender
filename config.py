@@ -82,11 +82,33 @@ ALS_ALPHA = float(os.getenv("ALS_ALPHA", 40.0))
 ALS_TRAINING_INTERACTIONS_LIMIT = int(os.getenv("ALS_TRAINING_INTERACTIONS_LIMIT", 50000))
 ALS_REFRESH_SECONDS = int(os.getenv("ALS_REFRESH_SECONDS", 24 * 3600))  # 24h
 
+# ALS Data Quality Settings
+ALS_DATA_QUALITY_ENABLED = os.getenv("ALS_DATA_QUALITY_ENABLED", "True").lower() == "true"
+ALS_REMOVE_DUPLICATES = os.getenv("ALS_REMOVE_DUPLICATES", "True").lower() == "true"
+ALS_REMOVE_OUTLIERS = os.getenv("ALS_REMOVE_OUTLIERS", "True").lower() == "true"
+ALS_OUTLIER_THRESHOLD_STD = float(os.getenv("ALS_OUTLIER_THRESHOLD_STD", "3.0"))
+ALS_REMOVE_STALE = os.getenv("ALS_REMOVE_STALE", "True").lower() == "true"
+ALS_MAX_AGE_DAYS = int(os.getenv("ALS_MAX_AGE_DAYS", "90"))
+ALS_REMOVE_COLD_START = os.getenv("ALS_REMOVE_COLD_START", "True").lower() == "true"
+ALS_MIN_USER_INTERACTIONS = int(os.getenv("ALS_MIN_USER_INTERACTIONS", "2"))
+ALS_MIN_PRODUCT_INTERACTIONS = int(os.getenv("ALS_MIN_PRODUCT_INTERACTIONS", "2"))
+
+# ALS Normalization Settings
+ALS_NORMALIZATION_METHOD = os.getenv("ALS_NORMALIZATION_METHOD", "none")  # none, log, minmax, zscore, sqrt
+
+# ALS Feature Engineering Settings
+ALS_TEMPORAL_WEIGHTING_ENABLED = os.getenv("ALS_TEMPORAL_WEIGHTING_ENABLED", "False").lower() == "true"
+ALS_RECENCY_HALF_LIFE_DAYS = float(os.getenv("ALS_RECENCY_HALF_LIFE_DAYS", "30.0"))
+
 # Session-based recommendations
 SESSION_GAP_SECONDS = int(os.getenv("SESSION_GAP_SECONDS", 30 * 60))  # 30 minutes
 SESSION_TRANSITIONS_LIMIT = int(os.getenv("SESSION_TRANSITIONS_LIMIT", 20000))
 SESSION_TRANSITIONS_REFRESH_SECONDS = int(os.getenv("SESSION_TRANSITIONS_REFRESH_SECONDS", 5 * 60))  # 5m
 SESSION_RECENT_K = int(os.getenv("SESSION_RECENT_K", 5))
+# Enhanced session recommendation parameters
+SESSION_TIME_DECAY_HALF_LIFE_DAYS = float(os.getenv("SESSION_TIME_DECAY_HALF_LIFE_DAYS", 30.0))  # 30 days
+SESSION_DIVERSITY_LAMBDA = float(os.getenv("SESSION_DIVERSITY_LAMBDA", 0.3))  # Diversity penalty weight
+SESSION_POPULARITY_NORMALIZATION = os.getenv("SESSION_POPULARITY_NORMALIZATION", "True").lower() == "true"
 
 # API Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")

@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from loguru import logger
 from scipy import sparse
+from implicit.als import AlternatingLeastSquares
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 @dataclass(frozen=True)
@@ -15,6 +17,7 @@ class ALSSettings:
     iterations: int = 15
     regularization: float = 0.1
     alpha: float = 40.0
+    use_gpu: bool = False  # Bật nếu có CUDA
 
 
 class ALSModel:
@@ -85,63 +88,57 @@ def load_als_model(path: str) -> Optional[ALSModel]:
         return None
 
 
-def _als_solve_rows(
-    C: sparse.csr_matrix,
-    fixed_factors: np.ndarray,
-    reg: float,
-    alpha: float,
-) -> np.ndarray:
-    """
-    One ALS solve step.
-    C is CSR with shape [n_rows, n_cols] and implicit counts in data.
-    fixed_factors is [n_cols, k].
-    Returns learned factors [n_rows, k].
-    """
-    n_rows = C.shape[0]
-    k = fixed_factors.shape[1]
-
-    YtY = fixed_factors.T @ fixed_factors
-    regI = (reg * np.eye(k, dtype=np.float32))
-
-    out = np.zeros((n_rows, k), dtype=np.float32)
-
-    indptr = C.indptr
-    indices = C.indices
-    data = C.data
-
-    for r in range(n_rows):
-        start, end = indptr[r], indptr[r + 1]
-        if start == end:
-            continue
-
-        idx = indices[start:end]
-        vals = data[start:end].astype(np.float32, copy=False)
-
-        # confidence: c = 1 + alpha * r_ui  => (c - 1) = alpha * r_ui
-        CuI = alpha * vals
-        Y = fixed_factors[idx]  # [nnz, k]
-
-        # A = YtY + Y^T (Cu - I) Y + regI  where (Cu - I) = diag(alpha*r)
-        A = YtY + (Y.T @ (Y * CuI[:, None])) + regI
-
-        # b = Y^T (Cu * p) with p=1 for interacted items => sum(c_i * y_i)
-        b = (Y * (1.0 + CuI)[:, None]).sum(axis=0)
-
-        out[r] = np.linalg.solve(A, b)
-
-    return out
-
-
 def train_implicit_als(
     interactions: List[Dict[str, Any]],
     settings: ALSSettings,
     seed: int = 42,
+    apply_data_quality: bool = True,
+    apply_normalization: bool = True,
+    normalization_method: str = "none",
+    data_quality_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[ALSModel, sparse.csr_matrix]:
     """
-    Train implicit-feedback ALS from aggregated interactions.
+    Train implicit-feedback ALS using the implicit library.
 
     interactions items must include: user_id, product_id, count
+
+    Args:
+        interactions: List of interaction dicts
+        settings: ALS training settings
+        seed: Random seed
+        apply_data_quality: Whether to apply data quality checks
+        apply_normalization: Whether to apply normalization
+        normalization_method: Normalization method (none, log, minmax, zscore, sqrt)
+        data_quality_config: Optional dict with data quality settings
     """
+    from utils.data_quality import validate_interactions
+    from utils.normalization import apply_normalization_to_interactions
+
+    # Apply data quality checks
+    if apply_data_quality:
+        quality_config = data_quality_config or {}
+        interactions, quality_stats = validate_interactions(
+            interactions,
+            remove_duplicates=quality_config.get("remove_duplicates", True),
+            remove_outliers=quality_config.get("remove_outliers", True),
+            outlier_threshold_std=quality_config.get("outlier_threshold_std", 3.0),
+            remove_stale=quality_config.get("remove_stale", True),
+            max_age_days=quality_config.get("max_age_days", 90),
+            remove_cold_start=quality_config.get("remove_cold_start", True),
+            min_user_interactions=quality_config.get("min_user_interactions", 2),
+            min_product_interactions=quality_config.get("min_product_interactions", 2),
+            timestamp_key=quality_config.get("timestamp_key"),
+        )
+        quality_stats.log_summary()
+
+    # Apply normalization
+    if apply_normalization and normalization_method != "none":
+        interactions = apply_normalization_to_interactions(
+            interactions,
+            method=normalization_method,
+            count_key="count",
+        )
+
     # Build id maps
     user_ids = sorted({str(x["user_id"]) for x in interactions if x.get("user_id") is not None})
     product_ids = sorted({str(x["product_id"]) for x in interactions if x.get("product_id") is not None})
@@ -171,20 +168,35 @@ def train_implicit_als(
 
     n_users = len(user_ids)
     n_items = len(product_ids)
-    Cui = sparse.csr_matrix((vals, (rows, cols)), shape=(n_users, n_items), dtype=np.float32)
+    
+    # Build user-item matrix (implicit expects item-user, so we'll transpose)
+    user_item_matrix = sparse.csr_matrix(
+        (vals, (rows, cols)), 
+        shape=(n_users, n_items), 
+        dtype=np.float32
+    )
 
-    # Initialize factors
-    rng = np.random.default_rng(seed)
-    user_factors = rng.normal(0, 0.01, size=(n_users, settings.factors)).astype(np.float32)
-    item_factors = rng.normal(0, 0.01, size=(n_items, settings.factors)).astype(np.float32)
+    # Initialize implicit ALS model
+    model_impl = AlternatingLeastSquares(
+        factors=settings.factors,
+        regularization=settings.regularization,
+        iterations=settings.iterations,
+        alpha=settings.alpha,
+        use_gpu=settings.use_gpu,
+        random_state=seed,
+        calculate_training_loss=False,  # Tắt để training nhanh hơn
+    )
 
-    # Train
+    # Train - implicit expects item-user matrix (transposed)
     start = time.time()
-    for it in range(settings.iterations):
-        t0 = time.time()
-        user_factors = _als_solve_rows(Cui, item_factors, settings.regularization, settings.alpha)
-        item_factors = _als_solve_rows(Cui.T.tocsr(), user_factors, settings.regularization, settings.alpha)
-        logger.debug(f"ALS iter {it + 1}/{settings.iterations} in {time.time() - t0:.2f}s")
+    logger.info(f"Training ALS with implicit library...")
+    
+    item_user_matrix = user_item_matrix.T.tocsr()
+    model_impl.fit(item_user_matrix, show_progress=True)
+
+    # Extract factors
+    user_factors = model_impl.user_factors.astype(np.float32)
+    item_factors = model_impl.item_factors.astype(np.float32)
 
     model = ALSModel(
         user_ids=np.array(user_ids, dtype=object),
@@ -198,7 +210,7 @@ def train_implicit_als(
         f"Trained ALS model: users={model.n_users}, items={model.n_items}, k={model.k} "
         f"in {time.time() - start:.2f}s"
     )
-    return model, Cui
+    return model, user_item_matrix
 
 
 def recommend_for_user(
@@ -246,4 +258,3 @@ def recommend_for_user(
         if len(out) >= limit:
             break
     return out
-

@@ -26,6 +26,9 @@ from config import (
     SESSION_TRANSITIONS_LIMIT,
     SESSION_TRANSITIONS_REFRESH_SECONDS,
     SESSION_RECENT_K,
+    SESSION_TIME_DECAY_HALF_LIFE_DAYS,
+    SESSION_DIVERSITY_LAMBDA,
+    SESSION_POPULARITY_NORMALIZATION,
 )
 
 from models.als_recommender import (
@@ -460,7 +463,11 @@ class ProductRecommender:
         if not interactions:
             return
 
-        stats = build_transition_stats(interactions, session_gap_seconds=SESSION_GAP_SECONDS)
+        stats = build_transition_stats(
+            interactions, 
+            session_gap_seconds=SESSION_GAP_SECONDS,
+            product_store=self.product_store
+        )
         with self._session_lock:
             self._session_stats = stats
             self._session_loaded_at = time.time()
@@ -494,7 +501,16 @@ class ProductRecommender:
             # fallback: vector-based from last viewed item
             return self.get_similar_products(product_id=recent_ids[0], limit=limit)
 
-        ranked = session_recommend_from_history(stats, recent_product_ids=recent_ids, limit=limit)
+        ranked = session_recommend_from_history(
+            stats, 
+            recent_product_ids=recent_ids, 
+            limit=limit,
+            time_decay_half_life_days=SESSION_TIME_DECAY_HALF_LIFE_DAYS,
+            diversity_lambda=SESSION_DIVERSITY_LAMBDA,
+            popularity_normalization=SESSION_POPULARITY_NORMALIZATION,
+            vector_store=self.vector_store,
+            embedding_model=self.embedding_model
+        )
         if not ranked:
             return self.get_similar_products(product_id=recent_ids[0], limit=limit)
 

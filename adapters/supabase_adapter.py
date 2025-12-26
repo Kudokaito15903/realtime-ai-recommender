@@ -316,34 +316,51 @@ class SupabaseUserBehavior(UserBehaviorInterface):
         self.client: Client = create_client(url, key)
         logger.info(f"Supabase User Behavior initialized: {url}")
 
-    def track_view(self, user_id: str, product_id: str) -> bool:
-        """Track a product view by user"""
+    def _insert_event(self, user_id: str, product_id: str, event_type: str) -> bool:
+        """Insert a generic interaction event; assumes user_views has event_type column."""
         try:
             view_data = {
                 'user_id': user_id,
                 'product_id': product_id,
+                'event_type': event_type,
                 'timestamp': datetime.utcnow().isoformat()
             }
 
-            result = self.client.table('user_views').insert(view_data).execute()
+            result = self.client.table('events').insert(view_data).execute()
 
             if result.data:
                 # Update category popularity
                 self._update_category_popularity(product_id)
-                logger.debug(f"Tracked view: user {user_id} -> product {product_id}")
+                logger.debug(f"Tracked {event_type}: user {user_id} -> product {product_id}")
                 return True
             else:
                 return False
 
         except Exception as e:
-            logger.error(f"Error tracking view: {e}")
+            logger.error(f"Error tracking {event_type}: {e}")
             return False
+
+    def track_view(self, user_id: str, product_id: str) -> bool:
+        """Track a product view by user"""
+        return self._insert_event(user_id, product_id, "view")
+
+    def track_click(self, user_id: str, product_id: str) -> bool:
+        """Track a product click by user"""
+        return self._insert_event(user_id, product_id, "click")
+
+    def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
+        """Track a product add-to-cart by user"""
+        return self._insert_event(user_id, product_id, "add_to_cart")
+
+    def track_purchase(self, user_id: str, product_id: str) -> bool:
+        """Track a product purchase by user"""
+        return self._insert_event(user_id, product_id, "purchase")
 
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Get user's recent product views"""
         try:
             result = (
-                self.client.table('user_views')
+                self.client.table('events')
                 .select('*, products(name, category, price)')
                 .eq('user_id', user_id)
                 .order('timestamp', desc=True)
@@ -387,8 +404,8 @@ class SupabaseUserBehavior(UserBehaviorInterface):
             # Supabase range is inclusive (start..end)
             end = offset + limit - 1
             result = (
-                self.client.table("user_views")
-                .select("user_id, product_id, timestamp")
+                self.client.table("events")
+                .select("user_id, product_id, event_type, timestamp")
                 .order("timestamp", desc=True)
                 .range(offset, end)
                 .execute()
@@ -416,10 +433,20 @@ class SupabaseUserBehavior(UserBehaviorInterface):
                 for row in batch:
                     user_id = row.get("user_id")
                     product_id = row.get("product_id")
+                    event_type = (row.get("event_type") or "view").lower()
                     if not user_id or not product_id:
                         continue
                     key = (user_id, product_id)
-                    counts[key] = counts.get(key, 0) + 1
+                    # Weight events: view=1, click=2, add_to_cart=3, purchase=5
+                    if event_type == "click":
+                        w = 2
+                    elif event_type == "add_to_cart":
+                        w = 3
+                    elif event_type == "purchase":
+                        w = 5
+                    else:
+                        w = 1
+                    counts[key] = counts.get(key, 0) + w
 
                 offset += page_size
 

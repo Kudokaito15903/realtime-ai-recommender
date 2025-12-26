@@ -434,6 +434,7 @@ class SupabaseUserBehavior(UserBehaviorInterface):
                     user_id = row.get("user_id")
                     product_id = row.get("product_id")
                     event_type = (row.get("event_type") or "view").lower()
+                    timestamp = row.get("timestamp") 
                     if not user_id or not product_id:
                         continue
                     key = (user_id, product_id)
@@ -446,12 +447,14 @@ class SupabaseUserBehavior(UserBehaviorInterface):
                         w = 5
                     else:
                         w = 1
-                    counts[key] = counts.get(key, 0) + w
+                    counts[key] = counts.get(key, {"count": 0, "timestamp": timestamp})
+                    counts[key]["count"] += w
+                    counts[key]["timestamp"] = max(counts[key]["timestamp"], timestamp)
 
                 offset += page_size
 
             return [
-                {"user_id": user_id, "product_id": product_id, "count": cnt}
+                {"user_id": user_id, "product_id": product_id, "count": cnt['count'], 'timestamp': cnt['timestamp']}
                 for (user_id, product_id), cnt in counts.items()
             ]
 

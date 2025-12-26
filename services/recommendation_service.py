@@ -525,42 +525,178 @@ class RecommendationService:
     def get_hybrid_recommendations(self, user_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
         Hybrid ranking: session + ALS (if available) + vector-based history as a fallback.
+        
+        Flow:
+        1. Fetch user context
+        2. Call ALS recommender
+        3. Call session recommender
+        4. Call embedding recommender
+        5. Merge + rerank
+        6. Return final list
         """
         if not user_id:
             return []
 
+        # 1. Fetch user context
+        user_context = self._fetch_user_context(user_id)
+        
         candidates: List[Dict[str, Any]] = []
 
-        # Session-based (fast, no training)
+        # 2. Call ALS recommender
         try:
-            candidates.extend(self.get_session_based_recommendations(user_id=user_id, limit=max(limit, 20)))
-        except Exception as e:
-            logger.warning(f"Session recommendations failed: {e}")
-
-        # ALS (do NOT force-train here; use if already available)
-        try:
-            candidates.extend(self.get_als_recommendations(user_id=user_id, limit=max(limit, 20), train_if_missing=False))
+            als_recs = self.get_als_recommendations(user_id=user_id, limit=max(limit, 20), train_if_missing=False)
+            candidates.extend(als_recs)
+            logger.debug(f"ALS recommender returned {len(als_recs)} candidates")
         except Exception as e:
             logger.warning(f"ALS recommendations failed: {e}")
 
-        # Vector-history (existing)
+        # 3. Call session recommender
         try:
-            candidates.extend(self.get_personalized_recommendations(user_id=user_id, limit=max(limit, 20)))
+            session_recs = self.get_session_based_recommendations(user_id=user_id, limit=max(limit, 20))
+            candidates.extend(session_recs)
+            logger.debug(f"Session recommender returned {len(session_recs)} candidates")
+        except Exception as e:
+            logger.warning(f"Session recommendations failed: {e}")
+
+        # 4. Call embedding recommender
+        try:
+            embedding_recs = self.get_personalized_recommendations(user_id=user_id, limit=max(limit, 20))
+            candidates.extend(embedding_recs)
+            logger.debug(f"Embedding recommender returned {len(embedding_recs)} candidates")
         except Exception as e:
             logger.warning(f"Vector-history recommendations failed: {e}")
 
-        # Deduplicate and keep best score per product (within each method scale)
+        if not candidates:
+            logger.warning(f"No candidates from any recommender for user {user_id}")
+            return []
+
+        # 5. Merge + rerank
+        # 5a. Deduplicate and merge
+        merged = self._merge_candidates(candidates)
+        
+        # 5b. Enrich with product metadata for reranking
+        enriched = self._enrich_candidates_with_metadata(merged, user_context)
+        
+        # 5c. Apply business rules filtering
+        from domain.ranking.business_rules import apply_business_rules
+        filtered = apply_business_rules(enriched)
+        
+        # 5d. Rerank with multiple factors
+        from domain.ranking.reranker import rerank_products
+        reranked = rerank_products(filtered, limit=limit * 2)  # Get more for final filtering
+        
+        # 6. Return final list
+        return reranked[:limit]
+
+    def _fetch_user_context(self, user_id: str) -> Dict[str, Any]:
+        """
+        Fetch user context for personalization.
+        
+        Returns:
+            Dictionary with user context (history, preferences, etc.)
+        """
+        context = {
+            "user_id": user_id,
+            "history": [],
+            "viewed_products": set(),
+            "preferences": {},
+        }
+        
+        try:
+            # Get user interaction history
+            history = self.user_behavior.get_user_history(user_id, limit=50)
+            context["history"] = history
+            context["viewed_products"] = {str(item.get("product_id")) for item in history if item.get("product_id")}
+            
+            # Extract preferences from history (categories, price ranges, etc.)
+            if history:
+                categories = [item.get("category") for item in history if item.get("category")]
+                prices = [float(item.get("price", 0)) for item in history if item.get("price")]
+                
+                context["preferences"] = {
+                    "preferred_categories": list(set(categories)) if categories else [],
+                    "avg_price": sum(prices) / len(prices) if prices else 0.0,
+                    "price_range": (min(prices), max(prices)) if prices else (0.0, 0.0),
+                }
+        except Exception as e:
+            logger.warning(f"Error fetching user context for {user_id}: {e}")
+        
+        return context
+
+    def _merge_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Merge candidates from different recommenders.
+        Deduplicate and keep best score per product.
+        """
         best: Dict[str, Dict[str, Any]] = {}
+        
         for rec in candidates:
-            pid = rec.get("product_id")
+            pid = str(rec.get("product_id", ""))
             if not pid:
                 continue
+            
+            score = float(rec.get("score", rec.get("similarity_score", 0.0)))
             prev = best.get(pid)
-            if prev is None or float(rec.get("score", 0.0)) > float(prev.get("score", 0.0)):
-                best[pid] = rec
+            
+            # Keep the recommendation with highest score
+            if prev is None or score > float(prev.get("score", prev.get("similarity_score", 0.0))):
+                # Normalize score field
+                rec_normalized = rec.copy()
+                rec_normalized["score"] = score
+                if "similarity_score" not in rec_normalized:
+                    rec_normalized["similarity_score"] = score
+                best[pid] = rec_normalized
+        
+        return list(best.values())
 
-        ranked = sorted(best.values(), key=lambda x: float(x.get("score", 0.0)), reverse=True)
-        return ranked[:limit]
+    def _enrich_candidates_with_metadata(
+        self, 
+        candidates: List[Dict[str, Any]], 
+        user_context: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Enrich candidates with product metadata for reranking.
+        """
+        enriched = []
+        viewed_products = user_context.get("viewed_products", set())
+        
+        for candidate in candidates:
+            product_id = str(candidate.get("product_id", ""))
+            if not product_id:
+                continue
+            
+            # Skip already viewed products
+            if product_id in viewed_products:
+                continue
+            
+            enriched_candidate = candidate.copy()
+            
+            # Try to get product metadata from product store
+            if self.product_store:
+                try:
+                    product = self.product_store.get_product(product_id)
+                    if product:
+                        enriched_candidate.update({
+                            "price": product.get("price", 0),
+                            "category": product.get("category", ""),
+                            "sold": product.get("sold", 0),
+                            "avgRating": product.get("avgRating", 0),
+                            "status": product.get("status", "active"),
+                        })
+                except Exception as e:
+                    logger.debug(f"Could not fetch metadata for product {product_id}: {e}")
+            
+            # If metadata not available, use defaults
+            if "price" not in enriched_candidate:
+                enriched_candidate["price"] = 0
+            if "sold" not in enriched_candidate:
+                enriched_candidate["sold"] = 0
+            if "avgRating" not in enriched_candidate:
+                enriched_candidate["avgRating"] = 0
+            
+            enriched.append(enriched_candidate)
+        
+        return enriched
 
     # ---------------------------------------------------------
     # Track user behavior

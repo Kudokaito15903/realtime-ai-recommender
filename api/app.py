@@ -11,7 +11,7 @@ import uvicorn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import API_HOST, API_PORT, DEBUG_MODE
-from api.routes import modern_products,recommendations
+from api.routes import modern_products, recommend
 # from api.middleware.logging import LoggingMiddleware
 
 
@@ -37,7 +37,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(modern_products.router, prefix="/products", tags=["products"])
-app.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])
+app.include_router(recommend.router, prefix="/recommendations", tags=["recommendations"])
 
 
 @app.get("/health")

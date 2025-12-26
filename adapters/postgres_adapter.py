@@ -68,12 +68,13 @@ def _ensure_tables():
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         """,
-        # User views table
+        # User views / interactions table
         """
         CREATE TABLE IF NOT EXISTS user_views (
             id SERIAL PRIMARY KEY,
             user_id VARCHAR(255) NOT NULL,
             product_id VARCHAR(255) NOT NULL,
+            event_type VARCHAR(32) NOT NULL DEFAULT 'view',
             timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         """,
@@ -87,6 +88,14 @@ def _ensure_tables():
         """,
     ]
 
+    # Additional schema evolution for existing databases
+    alter_statements = [
+        """
+        ALTER TABLE user_views
+        ADD COLUMN IF NOT EXISTS event_type VARCHAR(32) NOT NULL DEFAULT 'view';
+        """
+    ]
+
     try:
         conn = _get_pg_conn()
         try:
@@ -94,11 +103,13 @@ def _ensure_tables():
                 with conn.cursor() as cur:
                     for ddl in ddl_statements:
                         cur.execute(ddl)
-            logger.info("Ensured PostgreSQL tables exist")
+                    for alter in alter_statements:
+                        cur.execute(alter)
+            logger.info("Ensured PostgreSQL tables and columns exist")
         finally:
             conn.close()
     except Exception as e:
-        logger.error(f"Error ensuring PostgreSQL tables: {e}")
+        logger.error(f"Error ensuring PostgreSQL tables/columns: {e}")
 
 
 class PostgresEventProcessor(EventProcessorInterface):
@@ -473,7 +484,7 @@ class PostgresUserBehavior(UserBehaviorInterface):
         _ensure_tables()
         logger.info("Postgres User Behavior initialized")
 
-    def track_view(self, user_id: str, product_id: str) -> bool:
+    def _insert_event(self, user_id: str, product_id: str, event_type: str) -> bool:
         try:
             conn = _get_pg_conn()
             try:
@@ -481,20 +492,34 @@ class PostgresUserBehavior(UserBehaviorInterface):
                     with conn.cursor() as cur:
                         cur.execute(
                             """
-                            INSERT INTO user_views (user_id, product_id, timestamp)
-                            VALUES (%s, %s, %s);
+                            INSERT INTO user_views (user_id, product_id, event_type, timestamp)
+                            VALUES (%s, %s, %s, %s);
                             """,
-                            (user_id, product_id, datetime.utcnow()),
+                            (user_id, product_id, event_type, datetime.utcnow()),
                         )
                 # Update category popularity
                 self._update_category_popularity(product_id)
-                logger.debug(f"Tracked view: user {user_id} -> product {product_id}")
+                logger.debug(
+                    f"Tracked {event_type}: user {user_id} -> product {product_id}"
+                )
                 return True
             finally:
                 conn.close()
         except Exception as e:
-            logger.error(f"Error tracking view: {e}")
+            logger.error(f"Error tracking {event_type}: {e}")
             return False
+
+    def track_view(self, user_id: str, product_id: str) -> bool:
+        return self._insert_event(user_id, product_id, "view")
+
+    def track_click(self, user_id: str, product_id: str) -> bool:
+        return self._insert_event(user_id, product_id, "click")
+
+    def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
+        return self._insert_event(user_id, product_id, "add_to_cart")
+
+    def track_purchase(self, user_id: str, product_id: str) -> bool:
+        return self._insert_event(user_id, product_id, "purchase")
 
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         try:
@@ -593,7 +618,7 @@ class PostgresUserBehavior(UserBehaviorInterface):
                     with conn.cursor() as cur:
                         cur.execute(
                             """
-                            SELECT user_id, product_id, timestamp
+                            SELECT user_id, product_id, event_type, timestamp
                             FROM user_views
                             ORDER BY timestamp DESC
                             LIMIT %s OFFSET %s;
@@ -616,7 +641,18 @@ class PostgresUserBehavior(UserBehaviorInterface):
                     with conn.cursor() as cur:
                         cur.execute(
                             """
-                            SELECT user_id, product_id, COUNT(*) AS count
+                            SELECT
+                                user_id,
+                                product_id,
+                                SUM(
+                                    CASE event_type
+                                        WHEN 'view' THEN 1
+                                        WHEN 'click' THEN 2
+                                        WHEN 'add_to_cart' THEN 3
+                                        WHEN 'purchase' THEN 5
+                                        ELSE 1
+                                    END
+                                ) AS count
                             FROM user_views
                             GROUP BY user_id, product_id
                             ORDER BY count DESC

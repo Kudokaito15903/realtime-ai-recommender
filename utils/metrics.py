@@ -57,5 +57,33 @@ def log_dict(data, title=None):
     logger.debug(json.dumps(data, indent=2, default=str))
 
 
+def log_recommendation_event(
+    event_type: str,
+    user_id: str,
+    method: str,
+    variant: str,
+    num_results: int,
+    latency_ms: float,
+) -> None:
+    """
+    Structured log for recommendation calls to support basic metrics/monitoring.
+
+    event_type: e.g. "personalized_recommendation"
+    method: "hybrid" | "als" | "session" | "vector"
+    variant: A/B variant name (e.g. "A"/"B") or "control"
+    """
+    payload = {
+        "event": event_type,
+        "user_id": user_id,
+        "method": method,
+        "variant": variant,
+        "num_results": num_results,
+        "latency_ms": latency_ms,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    # Log as a single JSON blob to make it easy to ingest by tools like Loki/ELK.
+    logger.info(f"[metrics] {json.dumps(payload, default=str)}")
+
+
 # Initialize logging when module is imported
 setup_logging()

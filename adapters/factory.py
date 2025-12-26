@@ -15,7 +15,7 @@ def create_vector_store() -> VectorStoreInterface:
     logger.info(f"Creating vector store: {store_type}")
 
     if store_type == "pinecone":
-        from .pinecone_adapter import get_pinecone_vector_store
+        from adapters.vector_store.pinecone_adapter import get_pinecone_vector_store
         return get_pinecone_vector_store()
 
     raise ValueError(f"Unknown vector store type: {store_type}")
@@ -26,11 +26,11 @@ def create_event_processor() -> EventProcessorInterface:
     logger.info(f"Creating event processor: {processor_type}")
 
     if processor_type == "supabase":
-        from .supabase_adapter import get_supabase_event_processor
+        from adapters.database.supabase_adapter import get_supabase_event_processor
         return get_supabase_event_processor()
 
     if processor_type in ("postgres", "postgresql"):
-        from .postgres_adapter import get_postgres_event_processor
+        from adapters.database.postgres_adapter import get_postgres_event_processor
         return get_postgres_event_processor()
 
     raise ValueError(f"Unknown event processor type: {processor_type}")
@@ -41,11 +41,11 @@ def create_product_store() -> ProductStoreInterface:
     logger.info(f"Creating product store: {store_type}")
 
     if store_type == "supabase":
-        from .supabase_adapter import get_supabase_product_store
+        from adapters.database.supabase_adapter import get_supabase_product_store
         return get_supabase_product_store()
 
     if store_type in ("postgres", "postgresql"):
-        from .postgres_adapter import get_postgres_product_store
+        from adapters.database.postgres_adapter import get_postgres_product_store
         return get_postgres_product_store()
 
     raise ValueError(f"Unknown product store type: {store_type}")
@@ -56,11 +56,11 @@ def create_user_behavior() -> UserBehaviorInterface:
     logger.info(f"Creating user behavior store: {behavior_type}")
 
     if behavior_type == "supabase":
-        from .supabase_adapter import get_supabase_user_behavior
+        from adapters.database.supabase_adapter import get_supabase_user_behavior
         return get_supabase_user_behavior()
 
     if behavior_type in ("postgres", "postgresql"):
-        from .postgres_adapter import get_postgres_user_behavior
+        from adapters.database.postgres_adapter import get_postgres_user_behavior
         return get_postgres_user_behavior()
 
     raise ValueError(f"Unknown user behavior store type: {behavior_type}")

@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from data.schemas import ProductCreate, ProductUpdate, Product, SimilarProductResult,BackendInfoResponse
 from adapters.factory import get_event_processor, get_vector_store, get_product_store, get_backend_info
-from models.embeddings import get_embedding_model
+from domain.embeddings.product_embeddings import get_embedding_model
 
 # Initialize router
 router = APIRouter()

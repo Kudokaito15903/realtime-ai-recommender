@@ -10,7 +10,7 @@ from loguru import logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from data.schemas import RecommendationResponse
-from models.recommendations import get_product_recommender
+from services.recommendation_service import get_recommendation_service
 from utils.ab_testing import ABVariant, assign_variant
 from utils.metrics import log_recommendation_event
 
@@ -19,7 +19,7 @@ from utils.metrics import log_recommendation_event
 router = APIRouter()
 
 # Initialize service
-product_recommender = get_product_recommender()
+product_recommender = get_recommendation_service()
 
 @router.get("/{product_id}/similar", response_model=RecommendationResponse)
 async def get_product_recommendations(

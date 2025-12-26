@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from loguru import logger
 from pinecone import Pinecone, ServerlessSpec
 
-from .interfaces import VectorStoreInterface
+from adapters.interfaces import VectorStoreInterface
 
 
 class PineconeVectorStore(VectorStoreInterface):

@@ -7,7 +7,7 @@ import math
 from datetime import datetime
 from loguru import logger
 
-from models.embeddings import get_embedding_model
+from domain.embeddings.product_embeddings import get_embedding_model
 from adapters.factory  import (
     get_vector_store,
     get_user_behavior,
@@ -31,14 +31,14 @@ from config import (
     SESSION_POPULARITY_NORMALIZATION,
 )
 
-from models.als_recommender import (
+from domain.recommenders.als_recommender import (
     ALSSettings,
     load_als_model,
     save_als_model,
     train_implicit_als,
     recommend_for_user as als_recommend_for_user,
 )
-from models.session_recommender import (
+from domain.recommenders.session_recommender import (
     TransitionStats,
     build_transition_stats,
     recommend_from_history as session_recommend_from_history,

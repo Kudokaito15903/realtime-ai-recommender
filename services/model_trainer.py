@@ -9,7 +9,7 @@ from loguru import logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from adapters.factory import get_user_behavior, get_product_store
-from models.als_recommender import ALSSettings, train_implicit_als, save_als_model
+from domain.recommenders.als_recommender import ALSSettings, train_implicit_als, save_als_model
 from utils.feature_engineering import (
     apply_temporal_weighting,
     add_frequency_features,

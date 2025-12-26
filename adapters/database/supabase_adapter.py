@@ -13,7 +13,7 @@ from datetime import datetime
 from loguru import logger
 from supabase import create_client, Client
 
-from .interfaces import EventProcessorInterface, ProductStoreInterface, UserBehaviorInterface
+from adapters.interfaces import EventProcessorInterface, ProductStoreInterface, UserBehaviorInterface
 
 
 class SupabaseEventProcessor(EventProcessorInterface):

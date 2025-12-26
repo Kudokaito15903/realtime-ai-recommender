@@ -14,7 +14,7 @@ from loguru import logger
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from .interfaces import EventProcessorInterface, ProductStoreInterface, UserBehaviorInterface
+from adapters.interfaces import EventProcessorInterface, ProductStoreInterface, UserBehaviorInterface
 
 
 def _get_pg_conn():

@@ -14,7 +14,7 @@ from loguru import logger
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from adapters.factory import get_event_processor, get_vector_store
-from models.embeddings import get_embedding_model
+from domain.embeddings.product_embeddings import get_embedding_model
 
 
 class ModernProductEventConsumer:

@@ -7,7 +7,7 @@ from loguru import logger
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from models.embeddings import get_embedding_model
+from domain.embeddings.product_embeddings import get_embedding_model
 from adapters.factory import get_vector_store
 
 

@@ -12,15 +12,19 @@ class VectorStoreInterface(ABC):
     """Abstract interface for vector storage and similarity search"""
 
     @abstractmethod
-    def store_product_embedding(self, product_id: str, embedding: np.ndarray,
-                               metadata: Optional[Dict[str, Any]] = None) -> bool:
+    def store_product_embedding(
+        self,
+        product_id: str,
+        embedding: np.ndarray,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """Store a product embedding with optional metadata"""
         pass
 
     @abstractmethod
-    def find_similar_products(self, embedding: np.ndarray,
-                             limit: int = 10,
-                             min_score: float = 0.75) -> List[Dict[str, Any]]:
+    def find_similar_products(
+        self, embedding: np.ndarray, limit: int = 10, min_score: float = 0.75
+    ) -> List[Dict[str, Any]]:
         """Find similar products using vector similarity search"""
         pass
 
@@ -44,7 +48,9 @@ class EventProcessorInterface(ABC):
         pass
 
     @abstractmethod
-    def publish_product_updated(self, product_id: str, update_data: Dict[str, Any]) -> Optional[str]:
+    def publish_product_updated(
+        self, product_id: str, update_data: Dict[str, Any]
+    ) -> Optional[str]:
         """Publish a product updated event"""
         pass
 
@@ -88,8 +94,9 @@ class ProductStoreInterface(ABC):
         pass
 
     @abstractmethod
-    def list_products(self, category: Optional[str] = None,
-                      limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def list_products(
+        self, category: Optional[str] = None, limit: int = 100, offset: int = 0
+    ) -> List[Dict[str, Any]]:
         """List products with optional filtering"""
         pass
 
@@ -121,15 +128,16 @@ class UserBehaviorInterface(ABC):
     def track_purchase(self, user_id: str, product_id: str) -> bool:
         """Track a product purchase by user"""
         pass
-    
+
     @abstractmethod
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Get user's recent product views"""
         pass
 
     @abstractmethod
-    def get_popular_products(self, category: Optional[str] = None,
-                            limit: int = 10) -> List[Dict[str, Any]]:
+    def get_popular_products(
+        self, category: Optional[str] = None, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """Get popular products by view count"""
         pass
 

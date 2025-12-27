@@ -1,6 +1,7 @@
 """
 User vector building from interaction history.
 """
+
 import numpy as np
 from typing import List, Dict, Any
 from loguru import logger
@@ -27,7 +28,7 @@ def build_user_interest_vector(
     """
     embedding_model = get_product_embedding_model()
     dimension = embedding_model.embedding_dimension
-    
+
     if not interacted_products:
         return np.zeros(dimension, dtype=np.float32)
 
@@ -58,4 +59,3 @@ def build_user_interest_vector(
         user_vector /= norm
 
     return user_vector.astype(np.float32)
-

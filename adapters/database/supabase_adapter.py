@@ -13,7 +13,11 @@ from datetime import datetime
 from loguru import logger
 from supabase import create_client, Client
 
-from adapters.interfaces import EventProcessorInterface, ProductStoreInterface, UserBehaviorInterface
+from adapters.interfaces import (
+    EventProcessorInterface,
+    ProductStoreInterface,
+    UserBehaviorInterface,
+)
 
 
 class SupabaseEventProcessor(EventProcessorInterface):
@@ -31,40 +35,50 @@ class SupabaseEventProcessor(EventProcessorInterface):
 
     def publish_product_created(self, product_data: Dict[str, Any]) -> Optional[str]:
         """Publish a product created event to Supabase"""
-        return self._publish_event("create", product_data['id'], product_data)
+        return self._publish_event("create", product_data["id"], product_data)
 
-    def publish_product_updated(self, product_id: str, update_data: Dict[str, Any]) -> Optional[str]:
+    def publish_product_updated(
+        self, product_id: str, update_data: Dict[str, Any]
+    ) -> Optional[str]:
         """Publish a product updated event to Supabase"""
         return self._publish_event("update", product_id, update_data)
 
     def publish_product_deleted(self, product_id: str) -> Optional[str]:
         """Publish a product deleted event to Supabase"""
-        return self._publish_event("delete", product_id, {'id': product_id})
+        return self._publish_event("delete", product_id, {"id": product_id})
 
-    def _publish_event(self, event_type: str, product_id: str, data: Dict[str, Any]) -> Optional[str]:
+    def _publish_event(
+        self, event_type: str, product_id: str, data: Dict[str, Any]
+    ) -> Optional[str]:
         """Publish an event to Supabase events table"""
         try:
             event = {
-                'event_type': event_type,
-                'product_id': product_id,
-                'data': json.dumps(data),
-                'timestamp': datetime.utcnow().isoformat(),
-                'processed': False
+                "event_type": event_type,
+                "product_id": product_id,
+                "data": json.dumps(data),
+                "timestamp": datetime.utcnow().isoformat(),
+                "processed": False,
             }
 
             # Insert event into events table
-            result = self.client.table('product_events').insert(event).execute()
+            result = self.client.table("product_events").insert(event).execute()
 
             if result.data:
-                event_id = result.data[0]['id']
-                logger.info(f"Published {event_type} event for product {product_id}: {event_id}")
+                event_id = result.data[0]["id"]
+                logger.info(
+                    f"Published {event_type} event for product {product_id}: {event_id}"
+                )
                 return str(event_id)
             else:
-                logger.error(f"Failed to publish {event_type} event for product {product_id}")
+                logger.error(
+                    f"Failed to publish {event_type} event for product {product_id}"
+                )
                 return None
 
         except Exception as e:
-            logger.error(f"Error publishing {event_type} event for product {product_id}: {e}")
+            logger.error(
+                f"Error publishing {event_type} event for product {product_id}: {e}"
+            )
             return None
 
     def start_consumer(self, consumer_id: Optional[str] = None) -> None:
@@ -75,9 +89,7 @@ class SupabaseEventProcessor(EventProcessorInterface):
 
         self.running = True
         self.consumer_thread = threading.Thread(
-            target=self._consume_loop,
-            args=(consumer_id,),
-            daemon=True
+            target=self._consume_loop, args=(consumer_id,), daemon=True
         )
         self.consumer_thread.start()
         logger.info(f"Started Supabase event consumer: {consumer_id}")
@@ -104,10 +116,10 @@ class SupabaseEventProcessor(EventProcessorInterface):
                 try:
                     # Fetch unprocessed events
                     result = (
-                        self.client.table('product_events')
-                        .select('*')
-                        .eq('processed', False)
-                        .order('created_at', desc=False)
+                        self.client.table("product_events")
+                        .select("*")
+                        .eq("processed", False)
+                        .order("created_at", desc=False)
                         .limit(10)
                         .execute()
                     )
@@ -123,22 +135,26 @@ class SupabaseEventProcessor(EventProcessorInterface):
                             if self.event_handler:
                                 # Parse the event data
                                 event_data = {
-                                    'event_type': event['event_type'],
-                                    'product_id': event['product_id'],
-                                    'data': json.loads(event['data']),
-                                    'timestamp': event['timestamp']
+                                    "event_type": event["event_type"],
+                                    "product_id": event["product_id"],
+                                    "data": json.loads(event["data"]),
+                                    "timestamp": event["timestamp"],
                                 }
 
                                 # Call the event handler
                                 self.event_handler(event_data)
 
                             # Mark event as processed
-                            self.client.table('product_events').update({
-                                'processed': True,
-                                'processed_at': datetime.utcnow().isoformat()
-                            }).eq('id', event['id']).execute()
+                            self.client.table("product_events").update(
+                                {
+                                    "processed": True,
+                                    "processed_at": datetime.utcnow().isoformat(),
+                                }
+                            ).eq("id", event["id"]).execute()
 
-                            logger.debug(f"Processed event {event['id']}: {event['event_type']}")
+                            logger.debug(
+                                f"Processed event {event['id']}: {event['event_type']}"
+                            )
 
                         except Exception as e:
                             logger.error(f"Error processing event {event['id']}: {e}")
@@ -166,20 +182,25 @@ class SupabaseProductStore(ProductStoreInterface):
         try:
             # Prepare product data for storage
             product = {
-                'product_id': product_data['id'],
-                'name': product_data.get('name', ''),
-                'description': product_data.get('description', ''),
-                'category': product_data.get('category', ''),
-                'price': product_data.get('price', 0),
-                'metadata': json.dumps({k: v for k, v in product_data.items()
-                                      if k not in ['id', 'name', 'description', 'category', 'price']}),
-                'updated_at': datetime.utcnow().isoformat()
+                "product_id": product_data["id"],
+                "name": product_data.get("name", ""),
+                "description": product_data.get("description", ""),
+                "category": product_data.get("category", ""),
+                "price": product_data.get("price", 0),
+                "metadata": json.dumps(
+                    {
+                        k: v
+                        for k, v in product_data.items()
+                        if k not in ["id", "name", "description", "category", "price"]
+                    }
+                ),
+                "updated_at": datetime.utcnow().isoformat(),
             }
 
             # Upsert (insert or update)
             result = (
-                self.client.table('products')
-                .upsert(product, on_conflict='product_id')
+                self.client.table("products")
+                .upsert(product, on_conflict="product_id")
                 .execute()
             )
 
@@ -198,9 +219,9 @@ class SupabaseProductStore(ProductStoreInterface):
         """Retrieve a product by ID from Supabase"""
         try:
             result = (
-                self.client.table('products')
-                .select('*')
-                .eq('product_id', product_id)
+                self.client.table("products")
+                .select("*")
+                .eq("product_id", product_id)
                 .single()
                 .execute()
             )
@@ -208,16 +229,16 @@ class SupabaseProductStore(ProductStoreInterface):
             if result.data:
                 product = result.data
                 # Merge metadata back into the main product dict
-                metadata = json.loads(product.get('metadata', '{}'))
+                metadata = json.loads(product.get("metadata", "{}"))
                 return {
-                    'id': product['product_id'],
-                    'name': product['name'],
-                    'description': product['description'],
-                    'category': product['category'],
-                    'price': product['price'],
-                    'created_at': product.get('created_at'),
-                    'updated_at': product.get('updated_at'),
-                    **metadata
+                    "id": product["product_id"],
+                    "name": product["name"],
+                    "description": product["description"],
+                    "category": product["category"],
+                    "price": product["price"],
+                    "created_at": product.get("created_at"),
+                    "updated_at": product.get("updated_at"),
+                    **metadata,
                 }
             else:
                 return None
@@ -230,9 +251,9 @@ class SupabaseProductStore(ProductStoreInterface):
         """Delete a product from Supabase"""
         try:
             result = (
-                self.client.table('products')
+                self.client.table("products")
                 .delete()
-                .eq('product_id', product_id)
+                .eq("product_id", product_id)
                 .execute()
             )
 
@@ -243,30 +264,33 @@ class SupabaseProductStore(ProductStoreInterface):
             logger.error(f"Error deleting product {product_id}: {e}")
             return False
 
-    def list_products(self, category: Optional[str] = None,
-                      limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def list_products(
+        self, category: Optional[str] = None, limit: int = 100, offset: int = 0
+    ) -> List[Dict[str, Any]]:
         """List products with optional filtering"""
         try:
-            query = self.client.table('products').select('*')
+            query = self.client.table("products").select("*")
 
             if category:
-                query = query.eq('category', category)
+                query = query.eq("category", category)
 
             result = query.range(offset, offset + limit - 1).execute()
 
             products = []
             for product in result.data:
-                metadata = json.loads(product.get('metadata', '{}'))
-                products.append({
-                    'id': product['product_id'],
-                    'name': product['name'],
-                    'description': product['description'],
-                    'category': product['category'],
-                    'price': product['price'],
-                    'created_at': product.get('created_at'),
-                    'updated_at': product.get('updated_at'),
-                    **metadata
-                })
+                metadata = json.loads(product.get("metadata", "{}"))
+                products.append(
+                    {
+                        "id": product["product_id"],
+                        "name": product["name"],
+                        "description": product["description"],
+                        "category": product["category"],
+                        "price": product["price"],
+                        "created_at": product.get("created_at"),
+                        "updated_at": product.get("updated_at"),
+                        **metadata,
+                    }
+                )
 
             return products
 
@@ -279,26 +303,28 @@ class SupabaseProductStore(ProductStoreInterface):
         try:
             # Use Supabase text search (requires full-text search setup)
             result = (
-                self.client.table('products')
-                .select('*')
-                .text_search('name', query)
+                self.client.table("products")
+                .select("*")
+                .text_search("name", query)
                 .limit(limit)
                 .execute()
             )
 
             products = []
             for product in result.data:
-                metadata = json.loads(product.get('metadata', '{}'))
-                products.append({
-                    'id': product['product_id'],
-                    'name': product['name'],
-                    'description': product['description'],
-                    'category': product['category'],
-                    'price': product['price'],
-                    'created_at': product.get('created_at'),
-                    'updated_at': product.get('updated_at'),
-                    **metadata
-                })
+                metadata = json.loads(product.get("metadata", "{}"))
+                products.append(
+                    {
+                        "id": product["product_id"],
+                        "name": product["name"],
+                        "description": product["description"],
+                        "category": product["category"],
+                        "price": product["price"],
+                        "created_at": product.get("created_at"),
+                        "updated_at": product.get("updated_at"),
+                        **metadata,
+                    }
+                )
 
             return products
 
@@ -320,18 +346,20 @@ class SupabaseUserBehavior(UserBehaviorInterface):
         """Insert a generic interaction event; assumes user_views has event_type column."""
         try:
             view_data = {
-                'user_id': user_id,
-                'product_id': product_id,
-                'event_type': event_type,
-                'timestamp': datetime.utcnow().isoformat()
+                "user_id": user_id,
+                "product_id": product_id,
+                "event_type": event_type,
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
-            result = self.client.table('events').insert(view_data).execute()
+            result = self.client.table("events").insert(view_data).execute()
 
             if result.data:
                 # Update category popularity
                 self._update_category_popularity(product_id)
-                logger.debug(f"Tracked {event_type}: user {user_id} -> product {product_id}")
+                logger.debug(
+                    f"Tracked {event_type}: user {user_id} -> product {product_id}"
+                )
                 return True
             else:
                 return False
@@ -360,10 +388,10 @@ class SupabaseUserBehavior(UserBehaviorInterface):
         """Get user's recent product views"""
         try:
             result = (
-                self.client.table('events')
-                .select('*, products(name, category, price)')
-                .eq('user_id', user_id)
-                .order('timestamp', desc=True)
+                self.client.table("events")
+                .select("*, products(name, category, price)")
+                .eq("user_id", user_id)
+                .order("timestamp", desc=True)
                 .limit(limit)
                 .execute()
             )
@@ -374,17 +402,18 @@ class SupabaseUserBehavior(UserBehaviorInterface):
             logger.error(f"Error getting user history: {e}")
             return []
 
-    def get_popular_products(self, category: Optional[str] = None,
-                            limit: int = 10) -> List[Dict[str, Any]]:
+    def get_popular_products(
+        self, category: Optional[str] = None, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """Get popular products by view count"""
         try:
             # This would require a more complex query or materialized view
             # For now, return recent products
-            query = self.client.table('products').select('*')
+            query = self.client.table("products").select("*")
             if category:
-                query = query.eq('category', category)
+                query = query.eq("category", category)
 
-            result = query.order('created_at', desc=True).limit(limit).execute()
+            result = query.order("created_at", desc=True).limit(limit).execute()
             return result.data or []
 
         except Exception as e:
@@ -434,7 +463,7 @@ class SupabaseUserBehavior(UserBehaviorInterface):
                     user_id = row.get("user_id")
                     product_id = row.get("product_id")
                     event_type = (row.get("event_type") or "view").lower()
-                    timestamp = row.get("timestamp") 
+                    timestamp = row.get("timestamp")
                     if not user_id or not product_id:
                         continue
                     key = (user_id, product_id)
@@ -454,7 +483,12 @@ class SupabaseUserBehavior(UserBehaviorInterface):
                 offset += page_size
 
             return [
-                {"user_id": user_id, "product_id": product_id, "count": cnt['count'], 'timestamp': cnt['timestamp']}
+                {
+                    "user_id": user_id,
+                    "product_id": product_id,
+                    "count": cnt["count"],
+                    "timestamp": cnt["timestamp"],
+                }
                 for (user_id, product_id), cnt in counts.items()
             ]
 
@@ -521,7 +555,9 @@ def get_supabase_event_processor() -> SupabaseEventProcessor:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required")
+        raise ValueError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required"
+        )
 
     return SupabaseEventProcessor(url, key)
 
@@ -532,7 +568,9 @@ def get_supabase_product_store() -> SupabaseProductStore:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required")
+        raise ValueError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required"
+        )
 
     return SupabaseProductStore(url, key)
 
@@ -543,6 +581,8 @@ def get_supabase_user_behavior() -> SupabaseUserBehavior:
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required")
+        raise ValueError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required"
+        )
 
     return SupabaseUserBehavior(url, key)

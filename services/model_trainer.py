@@ -155,5 +155,3 @@
 #     #
 #     # On Windows Task Scheduler, configure a daily task at 2AM that runs:
 #     #   python -m services.model_trainer
-
-

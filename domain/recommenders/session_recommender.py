@@ -35,12 +35,20 @@ class TransitionStats:
     totals: Dict[str, int]
     popularity: Counter
     # Time-aware transitions: store (count, latest_timestamp) for each transition
-    transition_timestamps: Dict[str, Dict[str, Tuple[float, float]]] = field(default_factory=lambda: defaultdict(dict))
+    transition_timestamps: Dict[str, Dict[str, Tuple[float, float]]] = field(
+        default_factory=lambda: defaultdict(dict)
+    )
     # Category and brand popularity for cold-start handling
-    popularity_by_category: Dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
-    popularity_by_brand: Dict[str, Counter] = field(default_factory=lambda: defaultdict(Counter))
+    popularity_by_category: Dict[str, Counter] = field(
+        default_factory=lambda: defaultdict(Counter)
+    )
+    popularity_by_brand: Dict[str, Counter] = field(
+        default_factory=lambda: defaultdict(Counter)
+    )
     # Product metadata cache: product_id -> (category, brand)
-    product_metadata: Dict[str, Tuple[Optional[str], Optional[str]]] = field(default_factory=dict)
+    product_metadata: Dict[str, Tuple[Optional[str], Optional[str]]] = field(
+        default_factory=dict
+    )
 
 
 def build_transition_stats(
@@ -52,7 +60,7 @@ def build_transition_stats(
     """
     Build item->next-item transition counts from raw interaction events.
     Each interaction should include: user_id, product_id, timestamp, event_type.
-    
+
     Args:
         interactions: Iterable of interaction dicts
         session_gap_seconds: Maximum gap between interactions to consider same session
@@ -66,7 +74,7 @@ def build_transition_stats(
             "add_to_cart": 3.0,
             "purchase": 5.0,
         }
-    
+
     by_user: DefaultDict[str, List[Tuple[float, str, float]]] = defaultdict(list)
     popularity: Counter = Counter()
     popularity_by_category: Dict[str, Counter] = defaultdict(Counter)
@@ -80,22 +88,24 @@ def build_transition_stats(
         ts = _parse_ts_to_epoch(row.get("timestamp"))
         if uid is None or pid is None or ts is None:
             continue
-        
+
         event_type = (row.get("event_type") or "view").lower()
         weight = event_weights.get(event_type, 1.0)
-        
+
         uid_s = str(uid)
         pid_s = str(pid)
         by_user[uid_s].append((ts, pid_s, weight))
         popularity[pid_s] += weight
-        
+
         # Try to get category/brand from product store if available
         if pid_s not in product_metadata and product_store is not None:
             try:
                 product = product_store.get_product(pid_s)
                 if product:
                     category = product.get("category")
-                    brand = product.get("brand") or product.get("attributes", {}).get("brand")
+                    brand = product.get("brand") or product.get("attributes", {}).get(
+                        "brand"
+                    )
                     product_metadata[pid_s] = (category, brand)
                     if category:
                         popularity_by_category[category][pid_s] += weight
@@ -119,14 +129,19 @@ def build_transition_stats(
             gap = ts - prev_ts
             if gap <= session_gap_seconds and prev_pid != pid:
                 # Weighted transition count
-                transition_weight = (prev_weight + weight) / 2.0  # Average of both event weights
+                transition_weight = (
+                    prev_weight + weight
+                ) / 2.0  # Average of both event weights
                 transitions[prev_pid][pid] += transition_weight
                 totals[prev_pid] += transition_weight
-                
+
                 # Store timestamp (keep latest)
                 if pid in transition_timestamps[prev_pid]:
                     old_count, old_ts = transition_timestamps[prev_pid][pid]
-                    transition_timestamps[prev_pid][pid] = (old_count + transition_weight, max(old_ts, ts))
+                    transition_timestamps[prev_pid][pid] = (
+                        old_count + transition_weight,
+                        max(old_ts, ts),
+                    )
                 else:
                     transition_timestamps[prev_pid][pid] = (transition_weight, ts)
             prev_ts, prev_pid, prev_weight = ts, pid, weight
@@ -166,7 +181,7 @@ def recommend_from_history(
     - Category/brand-aware fallback
     - Diversity penalty (MMR-lite)
     - Popularity normalization
-    
+
     Args:
         stats: TransitionStats with transitions and metadata
         recent_product_ids: List of recent product IDs (most recent first)
@@ -184,7 +199,11 @@ def recommend_from_history(
     seen = {str(pid) for pid in recent_product_ids}
     scores: DefaultDict[str, float] = defaultdict(float)
     now = time.time()
-    time_decay_factor = math.log(2) / (time_decay_half_life_days * 24 * 3600) if time_decay_half_life_days > 0 else 0
+    time_decay_factor = (
+        math.log(2) / (time_decay_half_life_days * 24 * 3600)
+        if time_decay_half_life_days > 0
+        else 0
+    )
 
     # Extract categories/brands from recent products for fallback
     recent_categories = set()
@@ -205,17 +224,17 @@ def recommend_from_history(
         total = float(stats.totals.get(pid_s, 0) or 0)
         if not trans or total <= 0:
             continue
-        
-        position_weight = (decay ** i)
+
+        position_weight = decay**i
         trans_timestamps = stats.transition_timestamps.get(pid_s, {})
-        
+
         for nxt, cnt in trans.items():
             if nxt in seen:
                 continue
-            
+
             # Base transition probability
             base_score = float(cnt) / total if total > 0 else 0.0
-            
+
             # Apply time decay if timestamp available
             if nxt in trans_timestamps:
                 _, latest_ts = trans_timestamps[nxt]
@@ -225,7 +244,7 @@ def recommend_from_history(
                 else:
                     time_decay = 1.0
                 base_score *= time_decay
-            
+
             scores[nxt] += position_weight * base_score
 
     # Fallback strategy: category -> brand -> global popularity
@@ -233,26 +252,30 @@ def recommend_from_history(
         # Try category-based popularity first
         for cat in recent_categories:
             if cat in stats.popularity_by_category:
-                for pid, cnt in stats.popularity_by_category[cat].most_common(limit * 2):
+                for pid, cnt in stats.popularity_by_category[cat].most_common(
+                    limit * 2
+                ):
                     if pid not in seen:
                         scores[pid] = float(cnt)
                         if len(scores) >= limit:
                             break
                 if len(scores) >= limit:
                     break
-        
+
         # Then try brand-based popularity
         if len(scores) < limit:
             for brand in recent_brands:
                 if brand in stats.popularity_by_brand:
-                    for pid, cnt in stats.popularity_by_brand[brand].most_common(limit * 2):
+                    for pid, cnt in stats.popularity_by_brand[brand].most_common(
+                        limit * 2
+                    ):
                         if pid not in seen and pid not in scores:
                             scores[pid] = float(cnt)
                             if len(scores) >= limit:
                                 break
                     if len(scores) >= limit:
                         break
-        
+
         # Finally, global popularity
         if len(scores) < limit:
             for pid, cnt in stats.popularity.most_common(limit * 3):
@@ -272,10 +295,14 @@ def recommend_from_history(
                 scores[pid] /= math.log1p(float(pop))
 
     # Apply diversity penalty (MMR-lite) if similarity available
-    if diversity_lambda > 0 and vector_store is not None and embedding_model is not None:
+    if (
+        diversity_lambda > 0
+        and vector_store is not None
+        and embedding_model is not None
+    ):
         selected = []
         remaining = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        
+
         # Get embeddings for recent products
         recent_embeddings = {}
         for pid in recent_product_ids[:5]:  # Limit to avoid too many lookups
@@ -283,11 +310,11 @@ def recommend_from_history(
             emb = vector_store.get_product_embedding(pid_s)
             if emb is not None:
                 recent_embeddings[pid_s] = emb
-        
+
         while len(selected) < limit and remaining:
             best_pid, best_score = remaining[0]
             remaining = remaining[1:]
-            
+
             # Compute diversity penalty
             diversity_penalty = 0.0
             if recent_embeddings:
@@ -302,7 +329,7 @@ def recommend_from_history(
                         if norm_a > 0 and norm_b > 0:
                             similarity = dot / (norm_a * norm_b)
                             diversity_penalty = max(diversity_penalty, similarity)
-            
+
             # Also check similarity to already selected items
             for sel_pid, _ in selected:
                 sel_emb = vector_store.get_product_embedding(sel_pid)
@@ -314,15 +341,14 @@ def recommend_from_history(
                     if norm_a > 0 and norm_b > 0:
                         similarity = dot / (norm_a * norm_b)
                         diversity_penalty = max(diversity_penalty, similarity)
-            
+
             # Apply penalty
             adjusted_score = best_score * (1.0 - diversity_lambda * diversity_penalty)
             selected.append((best_pid, adjusted_score))
-        
+
         ranked = selected
     else:
         # Simple ranking without diversity
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
     return ranked[:limit]
-

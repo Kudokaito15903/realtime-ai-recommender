@@ -12,7 +12,9 @@ from pydantic import BaseModel
 from loguru import logger
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from data.schemas import RecommendationResponse
 from services.recommendation_service import get_recommendation_service
@@ -26,64 +28,59 @@ router = APIRouter()
 # Initialize service
 product_recommender = get_recommendation_service()
 
+
 @router.get("/{product_id}/similar", response_model=RecommendationResponse)
 async def get_product_recommendations(
-    product_id: str = Path(..., description="The ID of the product to get recommendations for"),
+    product_id: str = Path(
+        ..., description="The ID of the product to get recommendations for"
+    ),
     limit: int = Query(6, description="Maximum number of recommendations to return"),
-    user_id: Optional[str] = Header(None, description="User ID for personalization")
+    user_id: Optional[str] = Header(None, description="User ID for personalization"),
 ):
     """Get recommendations similar to a specific product"""
     try:
         # Track product view for the user if user_id is provided
         if user_id:
             product_recommender.track_product_view(user_id, product_id)
-        
+
         # Get similar product recommendations
         similar_products = product_recommender.get_similar_products(
-            product_id=product_id,
-            limit=limit
+            product_id=product_id, limit=limit
         )
-        
+
         # Create response
-        response = RecommendationResponse(
-            recommendations=similar_products
-        )
-        
+        response = RecommendationResponse(recommendations=similar_products)
+
         return response
-    
+
     except Exception as e:
         logger.error(f"Error getting similar product recommendations: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to get recommendations: {str(e)}"
+            status_code=500, detail=f"Failed to get recommendations: {str(e)}"
         )
 
 
 @router.get("/category/{category}", response_model=RecommendationResponse)
 async def get_category_recommendations(
     category: str = Path(..., description="The category to get recommendations for"),
-    limit: int = Query(10, description="Maximum number of recommendations to return")
+    limit: int = Query(10, description="Maximum number of recommendations to return"),
 ):
     """Get popular products in a specific category"""
     try:
         # Get popular products in the category
         popular_products = product_recommender.get_popular_in_category(
-            category=category,
-            limit=limit
+            category=category, limit=limit
         )
-        
+
         # Create response
-        response = RecommendationResponse(
-            recommendations=popular_products
-        )
-        
+        response = RecommendationResponse(recommendations=popular_products)
+
         return response
-    
+
     except Exception as e:
         logger.error(f"Error getting category recommendations: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to get category recommendations: {str(e)}"
+            status_code=500, detail=f"Failed to get category recommendations: {str(e)}"
         )
 
 
@@ -107,9 +104,7 @@ async def get_trending_recommendations(
             limit=limit,
         )
 
-        response = RecommendationResponse(
-            recommendations=popular_products
-        )
+        response = RecommendationResponse(recommendations=popular_products)
         return response
     except Exception as e:
         logger.error(f"Error getting trending recommendations: {e}")
@@ -162,20 +157,26 @@ async def get_personalized_recommendations(
                 m = "als"
 
         if m == "vector":
-            recommendations = product_recommender.get_personalized_recommendations(user_id=user_id, limit=limit)
+            recommendations = product_recommender.get_personalized_recommendations(
+                user_id=user_id, limit=limit
+            )
         elif m == "als":
-            recommendations = product_recommender.get_als_recommendations(user_id=user_id, limit=limit, train_if_missing=True)
+            recommendations = product_recommender.get_als_recommendations(
+                user_id=user_id, limit=limit, train_if_missing=True
+            )
         elif m == "session":
-            recommendations = product_recommender.get_session_based_recommendations(user_id=user_id, limit=limit, recent_k=recent_k)
+            recommendations = product_recommender.get_session_based_recommendations(
+                user_id=user_id, limit=limit, recent_k=recent_k
+            )
         elif m == "hybrid":
-            recommendations = product_recommender.get_hybrid_recommendations(user_id=user_id, limit=limit)
+            recommendations = product_recommender.get_hybrid_recommendations(
+                user_id=user_id, limit=limit
+            )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown method: {method}")
-        
+
         # Create response
-        response = RecommendationResponse(
-            recommendations=recommendations
-        )
+        response = RecommendationResponse(recommendations=recommendations)
 
         # Metrics logging
         elapsed_ms = (time.time() - start_time) * 1000.0
@@ -189,19 +190,21 @@ async def get_personalized_recommendations(
         )
 
         return response
-    
+
     except Exception as e:
         logger.error(f"Error getting personalized recommendations: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to get personalized recommendations: {str(e)}"
+            status_code=500,
+            detail=f"Failed to get personalized recommendations: {str(e)}",
         )
 
 
 @router.get("/personalized/recency-weighted", response_model=RecommendationResponse)
 async def get_recency_weighted_recommendations(
     user_id: str = Header(..., description="User ID for personalization"),
-    result_limit: int = Query(10, description="Maximum number of recommendations to return"),
+    result_limit: int = Query(
+        10, description="Maximum number of recommendations to return"
+    ),
     top_k_interactions: int = Query(
         20,
         description="Number of most important recent interactions to build the user vector",
@@ -244,7 +247,9 @@ async def get_recency_weighted_recommendations(
                 latency_ms=elapsed_ms,
             )
         except Exception as e:
-            logger.warning(f"Failed to log recency-weighted recommendation metrics: {e}")
+            logger.warning(
+                f"Failed to log recency-weighted recommendation metrics: {e}"
+            )
 
         return response
     except HTTPException:
@@ -261,26 +266,25 @@ async def get_recency_weighted_recommendations(
 @router.post("/track-view", response_model=Dict[str, Any])
 async def track_product_view(
     product_id: str = Query(..., description="The ID of the product viewed"),
-    user_id: str = Header(..., description="User ID for tracking")
+    user_id: str = Header(..., description="User ID for tracking"),
 ):
     """Track that a user viewed a product (for recommendation engine)"""
     try:
         # Track the product view
         product_recommender.track_product_view(user_id, product_id)
-        
+
         return {
             "status": "success",
             "message": "Product view tracked successfully",
             "product_id": product_id,
             "user_id": user_id,
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
-    
+
     except Exception as e:
         logger.error(f"Error tracking product view: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to track product view: {str(e)}"
+            status_code=500, detail=f"Failed to track product view: {str(e)}"
         )
 
 
@@ -360,28 +364,24 @@ async def track_purchase(
 async def search_recommendations(
     query: str = Query(..., description="Text query to search for recommendations"),
     limit: int = Query(10, description="Maximum number of recommendations to return"),
-    user_id: Optional[str] = Header(None, description="User ID for personalization")
+    user_id: Optional[str] = Header(None, description="User ID for personalization"),
 ):
     """Get recommendations based on a text search query"""
     try:
         # Get recommendations by text query
         recommendations = product_recommender.get_similar_products_by_text(
-            query_text=query,
-            limit=limit
+            query_text=query, limit=limit
         )
-        
+
         # Create response
-        response = RecommendationResponse(
-            recommendations=recommendations
-        )
-        
+        response = RecommendationResponse(recommendations=recommendations)
+
         return response
-        
+
     except Exception as e:
         logger.error(f"Error searching for recommendations: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to search for recommendations: {str(e)}"
+            status_code=500, detail=f"Failed to search for recommendations: {str(e)}"
         )
 
 
@@ -400,4 +400,3 @@ async def get_als_model_info():
             status_code=500,
             detail=f"Failed to get ALS model info: {str(e)}",
         )
-

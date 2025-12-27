@@ -63,14 +63,18 @@ class DataQualityStats:
         logger.info(f"Removed - Outliers: {self.removed_outliers}")
         logger.info(f"Removed - Stale data: {self.removed_stale}")
         logger.info(f"Removed - Cold-start users: {self.removed_cold_start_users}")
-        logger.info(f"Removed - Cold-start products: {self.removed_cold_start_products}")
+        logger.info(
+            f"Removed - Cold-start products: {self.removed_cold_start_products}"
+        )
         logger.info(f"Final records: {self.final_records}")
         logger.info(f"Unique users: {self.unique_users}")
         logger.info(f"Unique products: {self.unique_products}")
-        logger.info(f"Count stats - Min: {self.count_stats['min']:.2f}, "
-                   f"Max: {self.count_stats['max']:.2f}, "
-                   f"Mean: {self.count_stats['mean']:.2f}, "
-                   f"Median: {self.count_stats['median']:.2f}")
+        logger.info(
+            f"Count stats - Min: {self.count_stats['min']:.2f}, "
+            f"Max: {self.count_stats['max']:.2f}, "
+            f"Mean: {self.count_stats['mean']:.2f}, "
+            f"Median: {self.count_stats['median']:.2f}"
+        )
         logger.info("=" * 60)
 
 
@@ -132,12 +136,14 @@ def validate_interactions(
             stats.removed_invalid += 1
             continue
 
-        cleaned.append({
-            "user_id": str(uid),
-            "product_id": str(pid),
-            "count": cnt_f,
-            "timestamp": x.get(timestamp_key) if timestamp_key else None,
-        })
+        cleaned.append(
+            {
+                "user_id": str(uid),
+                "product_id": str(pid),
+                "count": cnt_f,
+                "timestamp": x.get(timestamp_key) if timestamp_key else None,
+            }
+        )
 
     # Step 2: Remove stale data (if timestamp available)
     if remove_stale and timestamp_key:
@@ -246,7 +252,9 @@ def validate_interactions(
         sorted_counts = sorted(counts)
         n = len(sorted_counts)
         if n % 2 == 0:
-            stats.count_stats["median"] = (sorted_counts[n // 2 - 1] + sorted_counts[n // 2]) / 2
+            stats.count_stats["median"] = (
+                sorted_counts[n // 2 - 1] + sorted_counts[n // 2]
+            ) / 2
         else:
             stats.count_stats["median"] = sorted_counts[n // 2]
 
@@ -262,4 +270,3 @@ def validate_interactions(
         stats.unique_products = len(unique_products)
 
     return cleaned, stats
-

@@ -19,4 +19,3 @@ __all__ = [
     "apply_business_rules",
     "filter_by_business_rules",
 ]
-

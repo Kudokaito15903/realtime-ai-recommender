@@ -235,64 +235,61 @@ CATEGORIES = {
             "Wireless Headphones",
             "Bluetooth Earbuds",
             "Noise Cancelling Headphones",
-            "Portable Speaker"
+            "Portable Speaker",
         ],
         "keywords": [
-            "wireless", "bluetooth", "noise cancelling",
-            "deep bass", "high quality sound", "long battery life"
+            "wireless",
+            "bluetooth",
+            "noise cancelling",
+            "deep bass",
+            "high quality sound",
+            "long battery life",
         ],
         "attributes": lambda: {
             "brand": random.choice(["SoundMax", "AudioPro", "BeatX"]),
             "battery_life": random.choice(["20h", "24h", "30h"]),
-            "connectivity": "Bluetooth"
-        }
+            "connectivity": "Bluetooth",
+        },
     },
     "Gaming Accessories": {
-        "names": [
-            "Gaming Mouse",
-            "Mechanical Keyboard",
-            "Gaming Headset"
-        ],
+        "names": ["Gaming Mouse", "Mechanical Keyboard", "Gaming Headset"],
         "keywords": [
-            "gaming", "rgb lighting", "high precision",
-            "ergonomic design", "fast response"
+            "gaming",
+            "rgb lighting",
+            "high precision",
+            "ergonomic design",
+            "fast response",
         ],
         "attributes": lambda: {
             "brand": random.choice(["ProGamer", "HyperPlay"]),
             "rgb": True,
-            "dpi": random.choice([8000, 12000, 16000])
-        }
+            "dpi": random.choice([8000, 12000, 16000]),
+        },
     },
     "Wearables": {
-        "names": [
-            "Smart Watch",
-            "Fitness Tracker"
-        ],
+        "names": ["Smart Watch", "Fitness Tracker"],
         "keywords": [
-            "heart rate monitoring", "sleep tracking",
-            "fitness", "gps", "waterproof"
+            "heart rate monitoring",
+            "sleep tracking",
+            "fitness",
+            "gps",
+            "waterproof",
         ],
         "attributes": lambda: {
             "brand": random.choice(["FitLife", "HealthPlus"]),
             "gps": random.choice([True, False]),
-            "waterproof": True
-        }
+            "waterproof": True,
+        },
     },
     "Sportswear": {
-        "names": [
-            "Running Shoes",
-            "Training Shoes"
-        ],
-        "keywords": [
-            "lightweight", "breathable mesh",
-            "comfortable", "durable sole"
-        ],
+        "names": ["Running Shoes", "Training Shoes"],
+        "keywords": ["lightweight", "breathable mesh", "comfortable", "durable sole"],
         "attributes": lambda: {
             "brand": random.choice(["RunFast", "ActiveWear"]),
             "material": "Mesh",
-            "gender": random.choice(["Men", "Women"])
-        }
-    }
+            "gender": random.choice(["Men", "Women"]),
+        },
+    },
 }
 
 
@@ -328,8 +325,9 @@ def generate_product():
         "description": description,
         "category": category,
         "price": random_price(category),
-        "sku": "SKU-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8)),
-        "attributes": config["attributes"]()
+        "sku": "SKU-"
+        + "".join(random.choices(string.ascii_uppercase + string.digits, k=8)),
+        "attributes": config["attributes"](),
     }
 
 

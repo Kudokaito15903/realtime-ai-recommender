@@ -108,9 +108,7 @@ def build_recency_weighted_user_vector(
     if not top_history:
         return np.zeros(embedding_dimension, dtype=np.float32), [], 0.0
 
-    prices = [
-        float(h["price"]) for h in top_history if h.get("price") is not None
-    ]
+    prices = [float(h["price"]) for h in top_history if h.get("price") is not None]
     target_price = float(np.mean(prices)) if prices else 0.0
 
     accumulator = np.zeros(embedding_dimension, dtype=np.float32)
@@ -132,7 +130,11 @@ def build_recency_weighted_user_vector(
         total_w += item["weight"]
 
     if total_w <= 0:
-        return np.zeros(embedding_dimension, dtype=np.float32), top_history, target_price
+        return (
+            np.zeros(embedding_dimension, dtype=np.float32),
+            top_history,
+            target_price,
+        )
 
     user_vec = accumulator / total_w
     norm = np.linalg.norm(user_vec)
@@ -140,5 +142,3 @@ def build_recency_weighted_user_vector(
         user_vec /= norm
 
     return user_vec.astype(np.float32), top_history, target_price
-
-

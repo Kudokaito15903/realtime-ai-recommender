@@ -47,6 +47,7 @@ from domain.recommenders.session_recommender import (
 
 class RecommendationService:
     """Service for generating real-time product recommendations"""
+
     _instance = None
 
     def __new__(cls):
@@ -76,7 +77,9 @@ class RecommendationService:
     # ---------------------------------------------------------
     # Similar products (vector-based)
     # ---------------------------------------------------------
-    def get_similar_products(self, product_id: str, limit: int = 6) -> List[Dict[str, Any]]:
+    def get_similar_products(
+        self, product_id: str, limit: int = 6
+    ) -> List[Dict[str, Any]]:
         start_time = time.time()
 
         embedding = self.vector_store.get_product_embedding(product_id)
@@ -85,16 +88,14 @@ class RecommendationService:
             return []
 
         similar_products = self.vector_store.find_similar_products(
-            embedding=embedding,
-            limit=limit + 1,
-            min_score=SIMILARITY_THRESHOLD
+            embedding=embedding, limit=limit + 1, min_score=SIMILARITY_THRESHOLD
         )
 
         results = [
             {
                 "product_id": p["product_id"],
                 "score": p["similarity_score"],
-                "recommendation_type": "similar"
+                "recommendation_type": "similar",
             }
             for p in similar_products
             if p["product_id"] != product_id
@@ -108,22 +109,22 @@ class RecommendationService:
     # ---------------------------------------------------------
     # Text-based search (semantic)
     # ---------------------------------------------------------
-    def get_similar_products_by_text(self, query_text: str, limit: int = 6) -> List[Dict[str, Any]]:
+    def get_similar_products_by_text(
+        self, query_text: str, limit: int = 6
+    ) -> List[Dict[str, Any]]:
         start_time = time.time()
 
         query_embedding = self.embedding_model.get_embedding(query_text)
 
         similar_products = self.vector_store.find_similar_products(
-            embedding=query_embedding,
-            limit=limit,
-            min_score=SIMILARITY_THRESHOLD * 0.8
+            embedding=query_embedding, limit=limit, min_score=SIMILARITY_THRESHOLD * 0.8
         )
 
         results = [
             {
                 "product_id": p["product_id"],
                 "score": p["similarity_score"],
-                "recommendation_type": "search"
+                "recommendation_type": "search",
             }
             for p in similar_products
         ][:limit]
@@ -136,17 +137,18 @@ class RecommendationService:
     # ---------------------------------------------------------
     # Popular products (Supabase-based)
     # ---------------------------------------------------------
-    def get_popular_in_category(self, category: str, limit: int = 6) -> List[Dict[str, Any]]:
+    def get_popular_in_category(
+        self, category: str, limit: int = 6
+    ) -> List[Dict[str, Any]]:
         products = self.user_behavior.get_popular_products(
-            category=category,
-            limit=limit
+            category=category, limit=limit
         )
 
         return [
             {
                 "product_id": p["product_id"],
                 "score": 1.0,  # popularity score placeholder
-                "recommendation_type": "popular_in_category"
+                "recommendation_type": "popular_in_category",
             }
             for p in products
         ]
@@ -155,9 +157,7 @@ class RecommendationService:
     # Personalized recommendations
     # ---------------------------------------------------------
     def get_personalized_recommendations(
-        self,
-        user_id: str,
-        limit: int = 10
+        self, user_id: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
 
         history = self.user_behavior.get_user_history(user_id, limit=5)
@@ -218,7 +218,9 @@ class RecommendationService:
         if not user_id:
             return []
 
-        history = self.user_behavior.get_user_history(user_id, limit=top_k_interactions * 2)
+        history = self.user_behavior.get_user_history(
+            user_id, limit=top_k_interactions * 2
+        )
         if not history:
             logger.debug(f"No history for user {user_id}; returning empty list")
             return []
@@ -231,7 +233,9 @@ class RecommendationService:
             if isinstance(ts_val, (int, float)):
                 return float(ts_val)
             try:
-                return datetime.fromisoformat(str(ts_val).replace("Z", "+00:00")).timestamp()
+                return datetime.fromisoformat(
+                    str(ts_val).replace("Z", "+00:00")
+                ).timestamp()
             except Exception:
                 return 0.0
 
@@ -252,11 +256,13 @@ class RecommendationService:
             if not pid:
                 continue
             w = interaction_weight(item)
-            weighted_history.append({
-                "product_id": str(pid),
-                "weight": w,
-                "price": item.get("price"),
-            })
+            weighted_history.append(
+                {
+                    "product_id": str(pid),
+                    "weight": w,
+                    "price": item.get("price"),
+                }
+            )
 
         weighted_history.sort(key=lambda x: x["weight"], reverse=True)
         top_history = weighted_history[:top_k_interactions]
@@ -269,7 +275,9 @@ class RecommendationService:
         target_price = float(np.mean(prices)) if prices else 0.0
 
         # Build user vector
-        accumulator = np.zeros(self.embedding_model.embedding_dimension, dtype=np.float32)
+        accumulator = np.zeros(
+            self.embedding_model.embedding_dimension, dtype=np.float32
+        )
         total_w = 0.0
 
         viewed_ids = set()
@@ -308,7 +316,9 @@ class RecommendationService:
             return []
 
         # Filter out already viewed
-        candidates = [c for c in candidates if str(c.get("product_id")) not in viewed_ids]
+        candidates = [
+            c for c in candidates if str(c.get("product_id")) not in viewed_ids
+        ]
 
         if not candidates:
             return []
@@ -351,15 +361,17 @@ class RecommendationService:
                 - price_penalty_weight * price_penalty
             )
 
-            ranked.append({
-                "product_id": c.get("product_id"),
-                "similarity_score": sim,
-                "sold": sold,
-                "avgRating": rating,
-                "price": price,
-                "price_distance": price_penalty,
-                "final_score": final_score,
-            })
+            ranked.append(
+                {
+                    "product_id": c.get("product_id"),
+                    "similarity_score": sim,
+                    "sold": sold,
+                    "avgRating": rating,
+                    "price": price,
+                    "price_distance": price_penalty,
+                    "final_score": final_score,
+                }
+            )
 
         ranked.sort(key=lambda x: x["final_score"], reverse=True)
         return ranked[:result_limit]
@@ -386,15 +398,21 @@ class RecommendationService:
                 self._als_model = model
                 self._als_cui = None  # matrix not persisted
                 self._als_loaded_at = time.time()
-                logger.info(f"Loaded ALS model from {ALS_MODEL_PATH} (trained_at={model.trained_at:.0f})")
+                logger.info(
+                    f"Loaded ALS model from {ALS_MODEL_PATH} (trained_at={model.trained_at:.0f})"
+                )
 
     def _train_and_save_als_model(self) -> None:
         """Train ALS model from behavior store and persist it."""
         if not hasattr(self.user_behavior, "get_interaction_counts"):
-            logger.warning("Behavior store does not support interaction counts; ALS unavailable")
+            logger.warning(
+                "Behavior store does not support interaction counts; ALS unavailable"
+            )
             return
 
-        interactions = self.user_behavior.get_interaction_counts(limit=ALS_TRAINING_INTERACTIONS_LIMIT)
+        interactions = self.user_behavior.get_interaction_counts(
+            limit=ALS_TRAINING_INTERACTIONS_LIMIT
+        )
         if not interactions:
             logger.warning("No interactions available for ALS training")
             return
@@ -413,7 +431,9 @@ class RecommendationService:
             self._als_cui = cui
             self._als_loaded_at = time.time()
 
-    def get_als_recommendations(self, user_id: str, limit: int = 10, train_if_missing: bool = True) -> List[Dict[str, Any]]:
+    def get_als_recommendations(
+        self, user_id: str, limit: int = 10, train_if_missing: bool = True
+    ) -> List[Dict[str, Any]]:
         """Personalized recommendations via implicit ALS."""
         if not user_id:
             return []
@@ -445,28 +465,36 @@ class RecommendationService:
             {"product_id": pid, "score": float(score), "recommendation_type": "als"}
             for pid, score in ranked
         ]
-    
+
     # ---------------------------------------------------------
     # Session-based recommendations (recent interactions)
     # ---------------------------------------------------------
     def _ensure_session_stats(self) -> None:
         with self._session_lock:
             # TTL
-            if self._session_stats is not None and (time.time() - self._session_loaded_at) <= SESSION_TRANSITIONS_REFRESH_SECONDS:
+            if (
+                self._session_stats is not None
+                and (time.time() - self._session_loaded_at)
+                <= SESSION_TRANSITIONS_REFRESH_SECONDS
+            ):
                 return
 
         if not hasattr(self.user_behavior, "get_recent_interactions"):
-            logger.warning("Behavior store does not support recent interactions; session recommender unavailable")
+            logger.warning(
+                "Behavior store does not support recent interactions; session recommender unavailable"
+            )
             return
 
-        interactions = self.user_behavior.get_recent_interactions(limit=SESSION_TRANSITIONS_LIMIT, offset=0)
+        interactions = self.user_behavior.get_recent_interactions(
+            limit=SESSION_TRANSITIONS_LIMIT, offset=0
+        )
         if not interactions:
             return
 
         stats = build_transition_stats(
-            interactions, 
+            interactions,
             session_gap_seconds=SESSION_GAP_SECONDS,
-            product_store=self.product_store
+            product_store=self.product_store,
         )
         with self._session_lock:
             self._session_stats = stats
@@ -489,7 +517,9 @@ class RecommendationService:
         if not history:
             return self.get_popular_in_category(category=None, limit=limit)
 
-        recent_ids = [str(x.get("product_id")) for x in history if x.get("product_id") is not None][:recent_k]
+        recent_ids = [
+            str(x.get("product_id")) for x in history if x.get("product_id") is not None
+        ][:recent_k]
         if not recent_ids:
             return self.get_popular_in_category(category=None, limit=limit)
 
@@ -502,14 +532,14 @@ class RecommendationService:
             return self.get_similar_products(product_id=recent_ids[0], limit=limit)
 
         ranked = session_recommend_from_history(
-            stats, 
-            recent_product_ids=recent_ids, 
+            stats,
+            recent_product_ids=recent_ids,
             limit=limit,
             time_decay_half_life_days=SESSION_TIME_DECAY_HALF_LIFE_DAYS,
             diversity_lambda=SESSION_DIVERSITY_LAMBDA,
             popularity_normalization=SESSION_POPULARITY_NORMALIZATION,
             vector_store=self.vector_store,
-            embedding_model=self.embedding_model
+            embedding_model=self.embedding_model,
         )
         if not ranked:
             return self.get_similar_products(product_id=recent_ids[0], limit=limit)
@@ -522,10 +552,12 @@ class RecommendationService:
     # ---------------------------------------------------------
     # Hybrid: combine multiple strategies
     # ---------------------------------------------------------
-    def get_hybrid_recommendations(self, user_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_hybrid_recommendations(
+        self, user_id: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """
         Hybrid ranking: session + ALS (if available) + vector-based history as a fallback.
-        
+
         Flow:
         1. Fetch user context
         2. Call ALS recommender
@@ -539,12 +571,14 @@ class RecommendationService:
 
         # 1. Fetch user context
         user_context = self._fetch_user_context(user_id)
-        
+
         candidates: List[Dict[str, Any]] = []
 
         # 2. Call ALS recommender
         try:
-            als_recs = self.get_als_recommendations(user_id=user_id, limit=max(limit, 20), train_if_missing=False)
+            als_recs = self.get_als_recommendations(
+                user_id=user_id, limit=max(limit, 20), train_if_missing=False
+            )
             candidates.extend(als_recs)
             logger.debug(f"ALS recommender returned {len(als_recs)} candidates")
         except Exception as e:
@@ -552,7 +586,9 @@ class RecommendationService:
 
         # 3. Call session recommender
         try:
-            session_recs = self.get_session_based_recommendations(user_id=user_id, limit=max(limit, 20))
+            session_recs = self.get_session_based_recommendations(
+                user_id=user_id, limit=max(limit, 20)
+            )
             candidates.extend(session_recs)
             logger.debug(f"Session recommender returned {len(session_recs)} candidates")
         except Exception as e:
@@ -560,9 +596,13 @@ class RecommendationService:
 
         # 4. Call embedding recommender
         try:
-            embedding_recs = self.get_personalized_recommendations(user_id=user_id, limit=max(limit, 20))
+            embedding_recs = self.get_personalized_recommendations(
+                user_id=user_id, limit=max(limit, 20)
+            )
             candidates.extend(embedding_recs)
-            logger.debug(f"Embedding recommender returned {len(embedding_recs)} candidates")
+            logger.debug(
+                f"Embedding recommender returned {len(embedding_recs)} candidates"
+            )
         except Exception as e:
             logger.warning(f"Vector-history recommendations failed: {e}")
 
@@ -573,25 +613,29 @@ class RecommendationService:
         # 5. Merge + rerank
         # 5a. Deduplicate and merge
         merged = self._merge_candidates(candidates)
-        
+
         # 5b. Enrich with product metadata for reranking
         enriched = self._enrich_candidates_with_metadata(merged, user_context)
-        
+
         # 5c. Apply business rules filtering
         from domain.ranking.business_rules import apply_business_rules
+
         filtered = apply_business_rules(enriched)
-        
+
         # 5d. Rerank with multiple factors
         from domain.ranking.reranker import rerank_products
-        reranked = rerank_products(filtered, limit=limit * 2)  # Get more for final filtering
-        
+
+        reranked = rerank_products(
+            filtered, limit=limit * 2
+        )  # Get more for final filtering
+
         # 6. Return final list
         return reranked[:limit]
 
     def _fetch_user_context(self, user_id: str) -> Dict[str, Any]:
         """
         Fetch user context for personalization.
-        
+
         Returns:
             Dictionary with user context (history, preferences, etc.)
         """
@@ -601,18 +645,26 @@ class RecommendationService:
             "viewed_products": set(),
             "preferences": {},
         }
-        
+
         try:
             # Get user interaction history
             history = self.user_behavior.get_user_history(user_id, limit=50)
             context["history"] = history
-            context["viewed_products"] = {str(item.get("product_id")) for item in history if item.get("product_id")}
-            
+            context["viewed_products"] = {
+                str(item.get("product_id"))
+                for item in history
+                if item.get("product_id")
+            }
+
             # Extract preferences from history (categories, price ranges, etc.)
             if history:
-                categories = [item.get("category") for item in history if item.get("category")]
-                prices = [float(item.get("price", 0)) for item in history if item.get("price")]
-                
+                categories = [
+                    item.get("category") for item in history if item.get("category")
+                ]
+                prices = [
+                    float(item.get("price", 0)) for item in history if item.get("price")
+                ]
+
                 context["preferences"] = {
                     "preferred_categories": list(set(categories)) if categories else [],
                     "avg_price": sum(prices) / len(prices) if prices else 0.0,
@@ -620,72 +672,78 @@ class RecommendationService:
                 }
         except Exception as e:
             logger.warning(f"Error fetching user context for {user_id}: {e}")
-        
+
         return context
 
-    def _merge_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _merge_candidates(
+        self, candidates: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
         Merge candidates from different recommenders.
         Deduplicate and keep best score per product.
         """
         best: Dict[str, Dict[str, Any]] = {}
-        
+
         for rec in candidates:
             pid = str(rec.get("product_id", ""))
             if not pid:
                 continue
-            
+
             score = float(rec.get("score", rec.get("similarity_score", 0.0)))
             prev = best.get(pid)
-            
+
             # Keep the recommendation with highest score
-            if prev is None or score > float(prev.get("score", prev.get("similarity_score", 0.0))):
+            if prev is None or score > float(
+                prev.get("score", prev.get("similarity_score", 0.0))
+            ):
                 # Normalize score field
                 rec_normalized = rec.copy()
                 rec_normalized["score"] = score
                 if "similarity_score" not in rec_normalized:
                     rec_normalized["similarity_score"] = score
                 best[pid] = rec_normalized
-        
+
         return list(best.values())
 
     def _enrich_candidates_with_metadata(
-        self, 
-        candidates: List[Dict[str, Any]], 
-        user_context: Dict[str, Any]
+        self, candidates: List[Dict[str, Any]], user_context: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
         Enrich candidates with product metadata for reranking.
         """
         enriched = []
         viewed_products = user_context.get("viewed_products", set())
-        
+
         for candidate in candidates:
             product_id = str(candidate.get("product_id", ""))
             if not product_id:
                 continue
-            
+
             # Skip already viewed products
             if product_id in viewed_products:
                 continue
-            
+
             enriched_candidate = candidate.copy()
-            
+
             # Try to get product metadata from product store
             if self.product_store:
                 try:
                     product = self.product_store.get_product(product_id)
                     if product:
-                        enriched_candidate.update({
-                            "price": product.get("price", 0),
-                            "category": product.get("category", ""),
-                            "sold": product.get("sold", 0),
-                            "avgRating": product.get("avgRating", 0),
-                            "status": product.get("status", "active"),
-                        })
+                        enriched_candidate.update(
+                            {
+                                "price": product.get("price", 0),
+                                "category": product.get("category", ""),
+                                "sold": product.get("sold", 0),
+                                "avgRating": product.get("avgRating", 0),
+                                "status": product.get("status", "active"),
+                            }
+                        )
                 except Exception as e:
-                    logger.debug(f"Could not fetch metadata for product {product_id}: {e}")
-            
+                    logger.debug(
+                        f"Could not fetch metadata for product {product_id}: {e}"
+                    )
+
             # If metadata not available, use defaults
             if "price" not in enriched_candidate:
                 enriched_candidate["price"] = 0
@@ -693,9 +751,9 @@ class RecommendationService:
                 enriched_candidate["sold"] = 0
             if "avgRating" not in enriched_candidate:
                 enriched_candidate["avgRating"] = 0
-            
+
             enriched.append(enriched_candidate)
-        
+
         return enriched
 
     # ---------------------------------------------------------
@@ -731,7 +789,7 @@ class RecommendationService:
         with self._als_lock:
             if self._als_model is None:
                 return {"status": "not_loaded", "model_path": ALS_MODEL_PATH}
-            
+
             return {
                 "status": "loaded",
                 "model_path": ALS_MODEL_PATH,
@@ -750,4 +808,3 @@ def get_recommendation_service() -> RecommendationService:
 # Alias for backward compatibility
 def get_product_recommender() -> RecommendationService:
     return get_recommendation_service()
-

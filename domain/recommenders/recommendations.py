@@ -8,7 +8,7 @@ from datetime import datetime
 from loguru import logger
 
 from domain.embeddings.product_embeddings import get_embedding_model
-from adapters.factory  import (
+from adapters.factory import (
     get_vector_store,
     get_user_behavior,
     get_product_store,
@@ -47,6 +47,7 @@ from domain.recommenders.session_recommender import (
 
 class ProductRecommender:
     """Service for generating real-time product recommendations (Supabase-based)"""
+
     _instance = None
 
     def __new__(cls):
@@ -76,7 +77,9 @@ class ProductRecommender:
     # ---------------------------------------------------------
     # Similar products (vector-based)
     # ---------------------------------------------------------
-    def get_similar_products(self, product_id: str, limit: int = 6) -> List[Dict[str, Any]]:
+    def get_similar_products(
+        self, product_id: str, limit: int = 6
+    ) -> List[Dict[str, Any]]:
         start_time = time.time()
 
         embedding = self.vector_store.get_product_embedding(product_id)
@@ -85,16 +88,14 @@ class ProductRecommender:
             return []
 
         similar_products = self.vector_store.find_similar_products(
-            embedding=embedding,
-            limit=limit + 1,
-            min_score=SIMILARITY_THRESHOLD
+            embedding=embedding, limit=limit + 1, min_score=SIMILARITY_THRESHOLD
         )
 
         results = [
             {
                 "product_id": p["product_id"],
                 "score": p["similarity_score"],
-                "recommendation_type": "similar"
+                "recommendation_type": "similar",
             }
             for p in similar_products
             if p["product_id"] != product_id
@@ -108,22 +109,22 @@ class ProductRecommender:
     # ---------------------------------------------------------
     # Text-based search (semantic)
     # ---------------------------------------------------------
-    def get_similar_products_by_text(self, query_text: str, limit: int = 6) -> List[Dict[str, Any]]:
+    def get_similar_products_by_text(
+        self, query_text: str, limit: int = 6
+    ) -> List[Dict[str, Any]]:
         start_time = time.time()
 
         query_embedding = self.embedding_model.get_embedding(query_text)
 
         similar_products = self.vector_store.find_similar_products(
-            embedding=query_embedding,
-            limit=limit,
-            min_score=SIMILARITY_THRESHOLD * 0.8
+            embedding=query_embedding, limit=limit, min_score=SIMILARITY_THRESHOLD * 0.8
         )
 
         results = [
             {
                 "product_id": p["product_id"],
                 "score": p["similarity_score"],
-                "recommendation_type": "search"
+                "recommendation_type": "search",
             }
             for p in similar_products
         ][:limit]
@@ -136,17 +137,18 @@ class ProductRecommender:
     # ---------------------------------------------------------
     # Popular products (Supabase-based)
     # ---------------------------------------------------------
-    def get_popular_in_category(self, category: str, limit: int = 6) -> List[Dict[str, Any]]:
+    def get_popular_in_category(
+        self, category: str, limit: int = 6
+    ) -> List[Dict[str, Any]]:
         products = self.user_behavior.get_popular_products(
-            category=category,
-            limit=limit
+            category=category, limit=limit
         )
 
         return [
             {
                 "product_id": p["product_id"],
                 "score": 1.0,  # popularity score placeholder
-                "recommendation_type": "popular_in_category"
+                "recommendation_type": "popular_in_category",
             }
             for p in products
         ]
@@ -155,9 +157,7 @@ class ProductRecommender:
     # Personalized recommendations
     # ---------------------------------------------------------
     def get_personalized_recommendations(
-        self,
-        user_id: str,
-        limit: int = 10
+        self, user_id: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
 
         history = self.user_behavior.get_user_history(user_id, limit=5)
@@ -218,7 +218,9 @@ class ProductRecommender:
         if not user_id:
             return []
 
-        history = self.user_behavior.get_user_history(user_id, limit=top_k_interactions * 2)
+        history = self.user_behavior.get_user_history(
+            user_id, limit=top_k_interactions * 2
+        )
         if not history:
             logger.debug(f"No history for user {user_id}; returning empty list")
             return []
@@ -231,7 +233,9 @@ class ProductRecommender:
             if isinstance(ts_val, (int, float)):
                 return float(ts_val)
             try:
-                return datetime.fromisoformat(str(ts_val).replace("Z", "+00:00")).timestamp()
+                return datetime.fromisoformat(
+                    str(ts_val).replace("Z", "+00:00")
+                ).timestamp()
             except Exception:
                 return 0.0
 
@@ -252,11 +256,13 @@ class ProductRecommender:
             if not pid:
                 continue
             w = interaction_weight(item)
-            weighted_history.append({
-                "product_id": str(pid),
-                "weight": w,
-                "price": item.get("price"),
-            })
+            weighted_history.append(
+                {
+                    "product_id": str(pid),
+                    "weight": w,
+                    "price": item.get("price"),
+                }
+            )
 
         weighted_history.sort(key=lambda x: x["weight"], reverse=True)
         top_history = weighted_history[:top_k_interactions]
@@ -269,7 +275,9 @@ class ProductRecommender:
         target_price = float(np.mean(prices)) if prices else 0.0
 
         # Build user vector
-        accumulator = np.zeros(self.embedding_model.embedding_dimension, dtype=np.float32)
+        accumulator = np.zeros(
+            self.embedding_model.embedding_dimension, dtype=np.float32
+        )
         total_w = 0.0
 
         viewed_ids = set()
@@ -308,7 +316,9 @@ class ProductRecommender:
             return []
 
         # Filter out already viewed
-        candidates = [c for c in candidates if str(c.get("product_id")) not in viewed_ids]
+        candidates = [
+            c for c in candidates if str(c.get("product_id")) not in viewed_ids
+        ]
 
         if not candidates:
             return []
@@ -351,15 +361,17 @@ class ProductRecommender:
                 - price_penalty_weight * price_penalty
             )
 
-            ranked.append({
-                "product_id": c.get("product_id"),
-                "similarity_score": sim,
-                "sold": sold,
-                "avgRating": rating,
-                "price": price,
-                "price_distance": price_penalty,
-                "final_score": final_score,
-            })
+            ranked.append(
+                {
+                    "product_id": c.get("product_id"),
+                    "similarity_score": sim,
+                    "sold": sold,
+                    "avgRating": rating,
+                    "price": price,
+                    "price_distance": price_penalty,
+                    "final_score": final_score,
+                }
+            )
 
         ranked.sort(key=lambda x: x["final_score"], reverse=True)
         return ranked[:result_limit]
@@ -386,15 +398,21 @@ class ProductRecommender:
                 self._als_model = model
                 self._als_cui = None  # matrix not persisted
                 self._als_loaded_at = time.time()
-                logger.info(f"Loaded ALS model from {ALS_MODEL_PATH} (trained_at={model.trained_at:.0f})")
+                logger.info(
+                    f"Loaded ALS model from {ALS_MODEL_PATH} (trained_at={model.trained_at:.0f})"
+                )
 
     def _train_and_save_als_model(self) -> None:
         """Train ALS model from behavior store and persist it."""
         if not hasattr(self.user_behavior, "get_interaction_counts"):
-            logger.warning("Behavior store does not support interaction counts; ALS unavailable")
+            logger.warning(
+                "Behavior store does not support interaction counts; ALS unavailable"
+            )
             return
 
-        interactions = self.user_behavior.get_interaction_counts(limit=ALS_TRAINING_INTERACTIONS_LIMIT)
+        interactions = self.user_behavior.get_interaction_counts(
+            limit=ALS_TRAINING_INTERACTIONS_LIMIT
+        )
         if not interactions:
             logger.warning("No interactions available for ALS training")
             return
@@ -413,7 +431,9 @@ class ProductRecommender:
             self._als_cui = cui
             self._als_loaded_at = time.time()
 
-    def get_als_recommendations(self, user_id: str, limit: int = 10, train_if_missing: bool = True) -> List[Dict[str, Any]]:
+    def get_als_recommendations(
+        self, user_id: str, limit: int = 10, train_if_missing: bool = True
+    ) -> List[Dict[str, Any]]:
         """Personalized recommendations via implicit ALS."""
         if not user_id:
             return []
@@ -445,28 +465,36 @@ class ProductRecommender:
             {"product_id": pid, "score": float(score), "recommendation_type": "als"}
             for pid, score in ranked
         ]
-    
+
     # ---------------------------------------------------------
     # Session-based recommendations (recent interactions)
     # ---------------------------------------------------------
     def _ensure_session_stats(self) -> None:
         with self._session_lock:
             # TTL
-            if self._session_stats is not None and (time.time() - self._session_loaded_at) <= SESSION_TRANSITIONS_REFRESH_SECONDS:
+            if (
+                self._session_stats is not None
+                and (time.time() - self._session_loaded_at)
+                <= SESSION_TRANSITIONS_REFRESH_SECONDS
+            ):
                 return
 
         if not hasattr(self.user_behavior, "get_recent_interactions"):
-            logger.warning("Behavior store does not support recent interactions; session recommender unavailable")
+            logger.warning(
+                "Behavior store does not support recent interactions; session recommender unavailable"
+            )
             return
 
-        interactions = self.user_behavior.get_recent_interactions(limit=SESSION_TRANSITIONS_LIMIT, offset=0)
+        interactions = self.user_behavior.get_recent_interactions(
+            limit=SESSION_TRANSITIONS_LIMIT, offset=0
+        )
         if not interactions:
             return
 
         stats = build_transition_stats(
-            interactions, 
+            interactions,
             session_gap_seconds=SESSION_GAP_SECONDS,
-            product_store=self.product_store
+            product_store=self.product_store,
         )
         with self._session_lock:
             self._session_stats = stats
@@ -489,7 +517,9 @@ class ProductRecommender:
         if not history:
             return self.get_popular_in_category(category=None, limit=limit)
 
-        recent_ids = [str(x.get("product_id")) for x in history if x.get("product_id") is not None][:recent_k]
+        recent_ids = [
+            str(x.get("product_id")) for x in history if x.get("product_id") is not None
+        ][:recent_k]
         if not recent_ids:
             return self.get_popular_in_category(category=None, limit=limit)
 
@@ -502,14 +532,14 @@ class ProductRecommender:
             return self.get_similar_products(product_id=recent_ids[0], limit=limit)
 
         ranked = session_recommend_from_history(
-            stats, 
-            recent_product_ids=recent_ids, 
+            stats,
+            recent_product_ids=recent_ids,
             limit=limit,
             time_decay_half_life_days=SESSION_TIME_DECAY_HALF_LIFE_DAYS,
             diversity_lambda=SESSION_DIVERSITY_LAMBDA,
             popularity_normalization=SESSION_POPULARITY_NORMALIZATION,
             vector_store=self.vector_store,
-            embedding_model=self.embedding_model
+            embedding_model=self.embedding_model,
         )
         if not ranked:
             return self.get_similar_products(product_id=recent_ids[0], limit=limit)
@@ -522,7 +552,9 @@ class ProductRecommender:
     # ---------------------------------------------------------
     # Hybrid: combine multiple strategies
     # ---------------------------------------------------------
-    def get_hybrid_recommendations(self, user_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_hybrid_recommendations(
+        self, user_id: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """
         Hybrid ranking: session + ALS (if available) + vector-based history as a fallback.
         """
@@ -533,19 +565,31 @@ class ProductRecommender:
 
         # Session-based (fast, no training)
         try:
-            candidates.extend(self.get_session_based_recommendations(user_id=user_id, limit=max(limit, 20)))
+            candidates.extend(
+                self.get_session_based_recommendations(
+                    user_id=user_id, limit=max(limit, 20)
+                )
+            )
         except Exception as e:
             logger.warning(f"Session recommendations failed: {e}")
 
         # ALS (do NOT force-train here; use if already available)
         try:
-            candidates.extend(self.get_als_recommendations(user_id=user_id, limit=max(limit, 20), train_if_missing=False))
+            candidates.extend(
+                self.get_als_recommendations(
+                    user_id=user_id, limit=max(limit, 20), train_if_missing=False
+                )
+            )
         except Exception as e:
             logger.warning(f"ALS recommendations failed: {e}")
 
         # Vector-history (existing)
         try:
-            candidates.extend(self.get_personalized_recommendations(user_id=user_id, limit=max(limit, 20)))
+            candidates.extend(
+                self.get_personalized_recommendations(
+                    user_id=user_id, limit=max(limit, 20)
+                )
+            )
         except Exception as e:
             logger.warning(f"Vector-history recommendations failed: {e}")
 
@@ -556,10 +600,14 @@ class ProductRecommender:
             if not pid:
                 continue
             prev = best.get(pid)
-            if prev is None or float(rec.get("score", 0.0)) > float(prev.get("score", 0.0)):
+            if prev is None or float(rec.get("score", 0.0)) > float(
+                prev.get("score", 0.0)
+            ):
                 best[pid] = rec
 
-        ranked = sorted(best.values(), key=lambda x: float(x.get("score", 0.0)), reverse=True)
+        ranked = sorted(
+            best.values(), key=lambda x: float(x.get("score", 0.0)), reverse=True
+        )
         return ranked[:limit]
 
     # ---------------------------------------------------------

@@ -17,7 +17,9 @@ def _hash_to_float(value: str) -> float:
     return (bucket % 10_000_000) / 10_000_000.0
 
 
-def assign_variant(user_id: str, experiments: Dict[str, Dict[str, ABVariant]]) -> Dict[str, str]:
+def assign_variant(
+    user_id: str, experiments: Dict[str, Dict[str, ABVariant]]
+) -> Dict[str, str]:
     """
     Assign a user to variants for multiple experiments in a deterministic way.
 
@@ -55,5 +57,3 @@ def assign_variant(user_id: str, experiments: Dict[str, Dict[str, ABVariant]]) -
         assignments[exp_name] = chosen
 
     return assignments
-
-

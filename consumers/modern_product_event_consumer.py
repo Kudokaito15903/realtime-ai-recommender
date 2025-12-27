@@ -13,7 +13,7 @@ from loguru import logger
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from adapters.factory import get_event_processor, get_vector_store
+from adapters.factory import get_event_processor, get_vector_store, get_product_store
 from domain.embeddings.product_embeddings import get_embedding_model
 
 
@@ -26,6 +26,7 @@ class ModernProductEventConsumer:
         # Initialize services using the adapter factory
         self.event_processor = get_event_processor()
         self.vector_store = get_vector_store()
+        self.product_store = get_product_store()
         self.embedding_model = get_embedding_model()
 
         # Set up event handling
@@ -35,52 +36,64 @@ class ModernProductEventConsumer:
 
     def _handle_event(self, event_data: dict) -> None:
         """Handle incoming product events (backend-agnostic)"""
-        event_type = event_data.get('event_type')
-        product_id = event_data.get('product_id')
-        data = event_data.get('data', {})
-        timestamp = event_data.get('timestamp')
+        event_type = event_data.get("event_type")
+        product_id = event_data.get("product_id")
+        data = event_data.get("data", {})
+        timestamp = event_data.get("timestamp")
 
-        logger.debug(f"Processing {event_type} event for product {product_id} from {timestamp}")
+        logger.debug(
+            f"Processing {event_type} event for product {product_id} from {timestamp}"
+        )
 
         if not event_type or not product_id:
             logger.warning(f"Invalid event format, missing fields: {event_data}")
             return
 
         try:
-            if event_type in ['create', 'update']:
+            if event_type in ["create", "update"]:
                 self._process_product_upsert(product_id, data)
-            elif event_type == 'delete':
+            elif event_type == "delete":
                 self._process_product_delete(product_id)
             else:
                 logger.warning(f"Unknown event type: {event_type}")
 
         except Exception as e:
-            logger.error(f"Error processing {event_type} event for product {product_id}: {e}")
+            logger.error(
+                f"Error processing {event_type} event for product {product_id}: {e}"
+            )
 
     def _process_product_upsert(self, product_id: str, product_data: dict) -> None:
         """Process product create/update events"""
         try:
             # Ensure product ID is in the data
-            if 'id' not in product_data:
-                product_data['id'] = product_id
+            if "id" not in product_data:
+                product_data["id"] = product_id
+
+            # Sync with product store
+            try:
+                self.product_store.store_product(product_data)
+                logger.info(f"Synced product {product_id} to product store")
+            except Exception as e:
+                logger.error(
+                    f"Failed to sync product {product_id} to product store: {e}"
+                )
 
             # Generate embedding for the product
+
             start_time = time.time()
             product_embedding = self.embedding_model.get_product_embedding(product_data)
 
             # Prepare metadata for vector storage
             metadata = {
-                'category': product_data.get('category', 'unknown'),
-                'name': product_data.get('name', 'unknown'),
-                'price': str(product_data.get('price', 0)),
-                'description': product_data.get('description', ''),
+                "category": product_data.get("category", "unknown"),
+                "name": product_data.get("name", "unknown"),
+                "price": str(product_data.get("price", 0)),
+                "description": product_data.get("description", ""),
             }
 
             # Store in vector database
             success = self.vector_store.store_product_embedding(
-                product_id=product_id,
-                embedding=product_embedding,
-                metadata=metadata
+                product_id=product_id, embedding=product_embedding, metadata=metadata
             )
 
             if success:
@@ -95,6 +108,15 @@ class ModernProductEventConsumer:
     def _process_product_delete(self, product_id: str) -> None:
         """Process product delete events"""
         try:
+            # Sync with product store
+            try:
+                self.product_store.delete_product(product_id)
+                logger.info(f"Deleted product {product_id} from product store")
+            except Exception as e:
+                logger.error(
+                    f"Failed to delete product {product_id} from product store: {e}"
+                )
+
             success = self.vector_store.delete_product_embedding(product_id)
             if success:
                 logger.info(f"Deleted embedding for product {product_id}")
@@ -128,7 +150,9 @@ def start_modern_consumer_process(consumer_id: str = None) -> None:
 
     # Set up signal handlers for graceful shutdown
     def signal_handler(sig, frame):
-        logger.info(f"Received shutdown signal, stopping consumer: {consumer.consumer_id}")
+        logger.info(
+            f"Received shutdown signal, stopping consumer: {consumer.consumer_id}"
+        )
         consumer.stop()
         sys.exit(0)
 
@@ -139,7 +163,9 @@ def start_modern_consumer_process(consumer_id: str = None) -> None:
     consumer.start()
 
     # Keep the process alive
-    logger.info(f"Modern consumer {consumer.consumer_id} is running. Press Ctrl+C to stop.")
+    logger.info(
+        f"Modern consumer {consumer.consumer_id} is running. Press Ctrl+C to stop."
+    )
     while True:
         time.sleep(1)
 
@@ -147,8 +173,8 @@ def start_modern_consumer_process(consumer_id: str = None) -> None:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Modern Product Event Consumer')
-    parser.add_argument('--consumer-id', type=str, help='Unique consumer ID')
+    parser = argparse.ArgumentParser(description="Modern Product Event Consumer")
+    parser.add_argument("--consumer-id", type=str, help="Unique consumer ID")
     args = parser.parse_args()
 
     # Configure logging
@@ -156,4 +182,3 @@ if __name__ == "__main__":
 
     # Start the consumer
     start_modern_consumer_process(args.consumer_id)
-

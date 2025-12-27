@@ -1,6 +1,7 @@
 """
 Embedding service for generating and managing embeddings.
 """
+
 from typing import List, Dict, Any
 import numpy as np
 from loguru import logger
@@ -11,7 +12,7 @@ from adapters.factory import get_vector_store
 
 class EmbeddingService:
     """Service for managing product embeddings."""
-    
+
     _instance = None
 
     def __new__(cls):
@@ -26,7 +27,7 @@ class EmbeddingService:
         """Generate and store product embedding."""
         embedding = self.embedding_model.get_product_embedding(product)
         product_id = product.get("id") or product.get("product_id")
-        
+
         if product_id:
             metadata = {
                 "name": product.get("name"),
@@ -34,14 +35,14 @@ class EmbeddingService:
                 "price": product.get("price"),
             }
             self.vector_store.store_product_embedding(
-                product_id=str(product_id),
-                embedding=embedding,
-                metadata=metadata
+                product_id=str(product_id), embedding=embedding, metadata=metadata
             )
-        
+
         return embedding
 
-    def batch_generate_embeddings(self, products: List[Dict[str, Any]]) -> List[np.ndarray]:
+    def batch_generate_embeddings(
+        self, products: List[Dict[str, Any]]
+    ) -> List[np.ndarray]:
         """Generate embeddings for multiple products."""
         embeddings = []
         for product in products:
@@ -56,4 +57,3 @@ class EmbeddingService:
 
 def get_embedding_service() -> EmbeddingService:
     return EmbeddingService()
-

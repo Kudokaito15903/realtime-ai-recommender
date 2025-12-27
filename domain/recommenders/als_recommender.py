@@ -35,8 +35,12 @@ class ALSModel:
         self.trained_at = trained_at
 
         # Derived mappings
-        self.user_id_to_index = {str(uid): int(i) for i, uid in enumerate(self.user_ids)}
-        self.product_id_to_index = {str(pid): int(i) for i, pid in enumerate(self.product_ids)}
+        self.user_id_to_index = {
+            str(uid): int(i) for i, uid in enumerate(self.user_ids)
+        }
+        self.product_id_to_index = {
+            str(pid): int(i) for i, pid in enumerate(self.product_ids)
+        }
 
     @property
     def n_users(self) -> int:
@@ -139,8 +143,12 @@ def train_implicit_als(
         )
 
     # Build id maps
-    user_ids = sorted({str(x["user_id"]) for x in interactions if x.get("user_id") is not None})
-    product_ids = sorted({str(x["product_id"]) for x in interactions if x.get("product_id") is not None})
+    user_ids = sorted(
+        {str(x["user_id"]) for x in interactions if x.get("user_id") is not None}
+    )
+    product_ids = sorted(
+        {str(x["product_id"]) for x in interactions if x.get("product_id") is not None}
+    )
 
     user_id_to_index = {uid: i for i, uid in enumerate(user_ids)}
     product_id_to_index = {pid: i for i, pid in enumerate(product_ids)}
@@ -167,12 +175,10 @@ def train_implicit_als(
 
     n_users = len(user_ids)
     n_items = len(product_ids)
-    
+
     # Build user-item matrix (implicit expects item-user, so we'll transpose)
     user_item_matrix = sparse.csr_matrix(
-        (vals, (rows, cols)), 
-        shape=(n_users, n_items), 
-        dtype=np.float32
+        (vals, (rows, cols)), shape=(n_users, n_items), dtype=np.float32
     )
 
     # Initialize implicit ALS model
@@ -189,7 +195,7 @@ def train_implicit_als(
     # Train - implicit expects item-user matrix (transposed)
     start = time.time()
     logger.info(f"Training ALS with implicit library...")
-    
+
     item_user_matrix = user_item_matrix.T.tocsr()
     model_impl.fit(item_user_matrix, show_progress=True)
 

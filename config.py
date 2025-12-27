@@ -13,9 +13,15 @@ load_dotenv()
 BACKEND_TYPE = os.getenv("BACKEND_TYPE", "hybrid")
 
 # Component-specific backend selection
-VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "pinecone")  # redis, pinecone, qdrant, chroma
-EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", "postgres")  # redis, supabase, nats, memory, postgres
-DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "postgres")  # redis, supabase, postgresql, sqlite
+VECTOR_STORE_TYPE = os.getenv(
+    "VECTOR_STORE_TYPE", "pinecone"
+)  # redis, pinecone, qdrant, chroma
+EVENT_PROCESSOR_TYPE = os.getenv(
+    "EVENT_PROCESSOR_TYPE", "postgres"
+)  # redis, supabase, nats, memory, postgres
+DATA_STORE_TYPE = os.getenv(
+    "DATA_STORE_TYPE", "postgres"
+)  # redis, supabase, postgresql, sqlite
 BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 
 # ================================
@@ -62,7 +68,9 @@ VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "product:vectors")
 # ================================
 
 # Vector Configuration
-VECTOR_DIMENSION = int(os.getenv("VECTOR_DIMENSION", 384))  # Dimension from all-MiniLM-L6-v2
+VECTOR_DIMENSION = int(
+    os.getenv("VECTOR_DIMENSION", 384)
+)  # Dimension from all-MiniLM-L6-v2
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
 
 # Model Configuration
@@ -74,16 +82,22 @@ MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 # ================================
 
 # ALS (implicit feedback) settings
-ALS_MODEL_PATH = os.getenv("ALS_MODEL_PATH", os.path.join(MODEL_CACHE_DIR, "als_model.npz"))
+ALS_MODEL_PATH = os.getenv(
+    "ALS_MODEL_PATH", os.path.join(MODEL_CACHE_DIR, "als_model.npz")
+)
 ALS_FACTORS = int(os.getenv("ALS_FACTORS", 64))
 ALS_ITERATIONS = int(os.getenv("ALS_ITERATIONS", 15))
 ALS_REGULARIZATION = float(os.getenv("ALS_REGULARIZATION", 0.1))
 ALS_ALPHA = float(os.getenv("ALS_ALPHA", 40.0))
-ALS_TRAINING_INTERACTIONS_LIMIT = int(os.getenv("ALS_TRAINING_INTERACTIONS_LIMIT", 50000))
+ALS_TRAINING_INTERACTIONS_LIMIT = int(
+    os.getenv("ALS_TRAINING_INTERACTIONS_LIMIT", 50000)
+)
 ALS_REFRESH_SECONDS = int(os.getenv("ALS_REFRESH_SECONDS", 24 * 3600))  # 24h
 
 # ALS Data Quality Settings
-ALS_DATA_QUALITY_ENABLED = os.getenv("ALS_DATA_QUALITY_ENABLED", "True").lower() == "true"
+ALS_DATA_QUALITY_ENABLED = (
+    os.getenv("ALS_DATA_QUALITY_ENABLED", "True").lower() == "true"
+)
 ALS_REMOVE_DUPLICATES = os.getenv("ALS_REMOVE_DUPLICATES", "True").lower() == "true"
 ALS_REMOVE_OUTLIERS = os.getenv("ALS_REMOVE_OUTLIERS", "True").lower() == "true"
 ALS_OUTLIER_THRESHOLD_STD = float(os.getenv("ALS_OUTLIER_THRESHOLD_STD", "3.0"))
@@ -94,21 +108,33 @@ ALS_MIN_USER_INTERACTIONS = int(os.getenv("ALS_MIN_USER_INTERACTIONS", "2"))
 ALS_MIN_PRODUCT_INTERACTIONS = int(os.getenv("ALS_MIN_PRODUCT_INTERACTIONS", "2"))
 
 # ALS Normalization Settings
-ALS_NORMALIZATION_METHOD = os.getenv("ALS_NORMALIZATION_METHOD", "none")  # none, log, minmax, zscore, sqrt
+ALS_NORMALIZATION_METHOD = os.getenv(
+    "ALS_NORMALIZATION_METHOD", "none"
+)  # none, log, minmax, zscore, sqrt
 
 # ALS Feature Engineering Settings
-ALS_TEMPORAL_WEIGHTING_ENABLED = os.getenv("ALS_TEMPORAL_WEIGHTING_ENABLED", "False").lower() == "true"
+ALS_TEMPORAL_WEIGHTING_ENABLED = (
+    os.getenv("ALS_TEMPORAL_WEIGHTING_ENABLED", "False").lower() == "true"
+)
 ALS_RECENCY_HALF_LIFE_DAYS = float(os.getenv("ALS_RECENCY_HALF_LIFE_DAYS", "30.0"))
 
 # Session-based recommendations
 SESSION_GAP_SECONDS = int(os.getenv("SESSION_GAP_SECONDS", 30 * 60))  # 30 minutes
 SESSION_TRANSITIONS_LIMIT = int(os.getenv("SESSION_TRANSITIONS_LIMIT", 20000))
-SESSION_TRANSITIONS_REFRESH_SECONDS = int(os.getenv("SESSION_TRANSITIONS_REFRESH_SECONDS", 5 * 60))  # 5m
+SESSION_TRANSITIONS_REFRESH_SECONDS = int(
+    os.getenv("SESSION_TRANSITIONS_REFRESH_SECONDS", 5 * 60)
+)  # 5m
 SESSION_RECENT_K = int(os.getenv("SESSION_RECENT_K", 5))
 # Enhanced session recommendation parameters
-SESSION_TIME_DECAY_HALF_LIFE_DAYS = float(os.getenv("SESSION_TIME_DECAY_HALF_LIFE_DAYS", 30.0))  # 30 days
-SESSION_DIVERSITY_LAMBDA = float(os.getenv("SESSION_DIVERSITY_LAMBDA", 0.3))  # Diversity penalty weight
-SESSION_POPULARITY_NORMALIZATION = os.getenv("SESSION_POPULARITY_NORMALIZATION", "True").lower() == "true"
+SESSION_TIME_DECAY_HALF_LIFE_DAYS = float(
+    os.getenv("SESSION_TIME_DECAY_HALF_LIFE_DAYS", 30.0)
+)  # 30 days
+SESSION_DIVERSITY_LAMBDA = float(
+    os.getenv("SESSION_DIVERSITY_LAMBDA", 0.3)
+)  # Diversity penalty weight
+SESSION_POPULARITY_NORMALIZATION = (
+    os.getenv("SESSION_POPULARITY_NORMALIZATION", "True").lower() == "true"
+)
 
 # API Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
@@ -129,9 +155,11 @@ class Config:
         # Backend configuration (mirror module-level defaults)
         self.BACKEND_TYPE = os.getenv("BACKEND_TYPE", BACKEND_TYPE)
         self.VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", VECTOR_STORE_TYPE)
-        self.EVENT_PROCESSOR_TYPE = os.getenv("EVENT_PROCESSOR_TYPE", EVENT_PROCESSOR_TYPE)
+        self.EVENT_PROCESSOR_TYPE = os.getenv(
+            "EVENT_PROCESSOR_TYPE", EVENT_PROCESSOR_TYPE
+        )
         self.DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", DATA_STORE_TYPE)
-        self.BEHAVIOR_STORE_TYPE=os.getenv("BEHAVIOR_STORE_TYPE", BEHAVIOR_STORE_TYPE) 
+        self.BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", BEHAVIOR_STORE_TYPE)
 
         # Redis configuration
         self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -148,7 +176,9 @@ class Config:
         self.SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
 
         # Model configuration
-        self.EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+        self.EMBEDDING_MODEL_NAME = os.getenv(
+            "EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"
+        )
         self.MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 
         # Logging

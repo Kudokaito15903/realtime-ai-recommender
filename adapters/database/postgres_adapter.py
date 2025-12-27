@@ -14,7 +14,11 @@ from loguru import logger
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from adapters.interfaces import EventProcessorInterface, ProductStoreInterface, UserBehaviorInterface
+from adapters.interfaces import (
+    EventProcessorInterface,
+    ProductStoreInterface,
+    UserBehaviorInterface,
+)
 
 
 def _get_pg_conn():
@@ -715,9 +719,7 @@ class PostgresUserBehavior(UserBehaviorInterface):
             finally:
                 conn.close()
         except Exception as e:
-            logger.error(
-                f"Error looking up product category for {product_id}: {e}"
-            )
+            logger.error(f"Error looking up product category for {product_id}: {e}")
             return None
 
 
@@ -732,4 +734,3 @@ def get_postgres_product_store() -> PostgresProductStore:
 
 def get_postgres_user_behavior() -> PostgresUserBehavior:
     return PostgresUserBehavior()
-

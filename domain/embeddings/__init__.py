@@ -1,4 +1,3 @@
 """
 Embedding domain logic
 """
-

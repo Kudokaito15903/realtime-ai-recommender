@@ -1,4 +1,3 @@
- 
 import os
 import sys
 import time
@@ -12,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import API_HOST, API_PORT, DEBUG_MODE
 from api.routes import modern_products, recommend
+
 # from api.middleware.logging import LoggingMiddleware
 
 
@@ -20,7 +20,7 @@ app = FastAPI(
     title="E-commerce Real-time AI API (Pinecone stack)",
     description="API for real-time product analysis and recommendations powered by Pinecone",
     version="2.0.0",
-    debug=DEBUG_MODE
+    debug=DEBUG_MODE,
 )
 
 # Add CORS middleware (optional - keep disabled by default)
@@ -37,7 +37,9 @@ app = FastAPI(
 
 # Include routers
 app.include_router(modern_products.router, prefix="/products", tags=["products"])
-app.include_router(recommend.router, prefix="/recommendations", tags=["recommendations"])
+app.include_router(
+    recommend.router, prefix="/recommendations", tags=["recommendations"]
+)
 
 
 @app.get("/health")
@@ -61,9 +63,4 @@ if __name__ == "__main__":
     logger.info(f"Starting API server on {API_HOST}:{API_PORT}")
 
     # Start server
-    uvicorn.run(
-        "api.app:app",
-        host=API_HOST,
-        port=API_PORT,
-        reload=DEBUG_MODE
-    )
+    uvicorn.run("api.app:app", host=API_HOST, port=API_PORT, reload=DEBUG_MODE)

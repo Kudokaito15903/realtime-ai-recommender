@@ -42,14 +42,18 @@ def normalize_counts(
         # Log transformation: log(1 + x)
         # Reduces impact of power users
         normalized = np.log1p(counts_array)
-        logger.debug(f"Applied log normalization: min={normalized.min():.4f}, max={normalized.max():.4f}")
+        logger.debug(
+            f"Applied log normalization: min={normalized.min():.4f}, max={normalized.max():.4f}"
+        )
         return normalized.tolist()
 
     elif method == "sqrt":
         # Square root transformation: sqrt(x)
         # Less aggressive than log
         normalized = np.sqrt(counts_array)
-        logger.debug(f"Applied sqrt normalization: min={normalized.min():.4f}, max={normalized.max():.4f}")
+        logger.debug(
+            f"Applied sqrt normalization: min={normalized.min():.4f}, max={normalized.max():.4f}"
+        )
         return normalized.tolist()
 
     elif method == "minmax":
@@ -60,7 +64,9 @@ def normalize_counts(
             normalized = (counts_array - min_val) / (max_val - min_val)
         else:
             normalized = np.zeros_like(counts_array)
-        logger.debug(f"Applied min-max normalization: min={normalized.min():.4f}, max={normalized.max():.4f}")
+        logger.debug(
+            f"Applied min-max normalization: min={normalized.min():.4f}, max={normalized.max():.4f}"
+        )
         return normalized.tolist()
 
     elif method == "zscore":
@@ -71,7 +77,9 @@ def normalize_counts(
             normalized = (counts_array - mean_val) / std_val
         else:
             normalized = np.zeros_like(counts_array)
-        logger.debug(f"Applied z-score normalization: mean={normalized.mean():.4f}, std={normalized.std():.4f}")
+        logger.debug(
+            f"Applied z-score normalization: mean={normalized.mean():.4f}, std={normalized.std():.4f}"
+        )
         return normalized.tolist()
 
     else:
@@ -108,4 +116,3 @@ def apply_normalization_to_interactions(
         result.append(new_x)
 
     return result
-

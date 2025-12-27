@@ -1,6 +1,7 @@
 """
 Database adapters.
 """
+
 from adapters.database.postgres_adapter import (
     PostgresEventProcessor,
     PostgresProductStore,
@@ -32,4 +33,3 @@ __all__ = [
     "get_supabase_product_store",
     "get_supabase_user_behavior",
 ]
-

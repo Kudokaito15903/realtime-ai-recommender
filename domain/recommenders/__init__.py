@@ -18,9 +18,6 @@ from domain.recommenders.session_recommender import (
     recommend_from_history,
 )
 
-from domain.recommenders.hybrid_recommender import (
-    HybridRecommender,
-)
 
 __all__ = [
     "ALSModel",
@@ -32,6 +29,4 @@ __all__ = [
     "TransitionStats",
     "build_transition_stats",
     "recommend_from_history",
-    "HybridRecommender",
 ]
-

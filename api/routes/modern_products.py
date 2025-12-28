@@ -208,11 +208,9 @@ async def create_product(product: ProductCreate):
         # Convert Pydantic model to dict
         product_data = product.dict()
         product_id = product_data.get("id")
-        
+
         if not product_id:
-            raise HTTPException(
-                status_code=400, detail="Product ID is required"
-            )
+            raise HTTPException(status_code=400, detail="Product ID is required")
 
         # Store product in product store if available
         if PRODUCT_STORE_AVAILABLE:
@@ -220,7 +218,9 @@ async def create_product(product: ProductCreate):
                 product_store.store_product(product_data)
                 logger.info(f"Stored product {product_id} in product store")
             except Exception as e:
-                logger.error(f"Failed to store product {product_id} in product store: {e}")
+                logger.error(
+                    f"Failed to store product {product_id} in product store: {e}"
+                )
                 # Continue even if product store fails
 
         # Generate embedding for the product
@@ -243,7 +243,11 @@ async def create_product(product: ProductCreate):
             if price is None and product_data.get("productVariants"):
                 variants = product_data.get("productVariants")
                 if variants and len(variants) > 0:
-                    price = variants[0].get("price") if isinstance(variants[0], dict) else None
+                    price = (
+                        variants[0].get("price")
+                        if isinstance(variants[0], dict)
+                        else None
+                    )
 
             metadata = {
                 "category": category or "unknown",

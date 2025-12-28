@@ -18,6 +18,8 @@ sys.path.append(
 
 from data.schemas import RecommendationResponse
 from services.recommendation_service import get_recommendation_service
+from services.variant_selector import get_variant_selector
+from adapters.factory import get_user_behavior
 from utils.ab_testing import ABVariant, assign_variant
 from utils.metrics import log_recommendation_event
 
@@ -175,6 +177,23 @@ async def get_personalized_recommendations(
         else:
             raise HTTPException(status_code=400, detail=f"Unknown method: {method}")
 
+        # Layer 2: Variant Selection (enrich with recommended variants)
+        try:
+            user_behavior = get_user_behavior()
+            user_history = (
+                user_behavior.get_user_history(user_id, limit=50) if user_id else None
+            )
+
+            variant_selector = get_variant_selector()
+            recommendations = variant_selector.enrich_recommendations_with_variants(
+                recommendations=recommendations,
+                user_id=user_id,
+                user_history=user_history,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to enrich recommendations with variants: {e}")
+            # Continue without variant enrichment
+
         # Create response
         response = RecommendationResponse(recommendations=recommendations)
 
@@ -315,16 +334,21 @@ async def track_product_click(
 @router.post("/track-add-to-cart", response_model=Dict[str, Any])
 async def track_add_to_cart(
     product_id: str = Query(..., description="The ID of the product added to cart"),
+    variant_id: Optional[str] = Query(
+        None, description="The SKU/variant ID (recommended for conversion tracking)"
+    ),
     user_id: str = Header(..., description="User ID for tracking"),
 ):
-    """Track that a user added a product to cart"""
+    """Track that a user added a product to cart. variant_id recommended for conversion tracking"""
     try:
-        product_recommender.track_add_to_cart(user_id, product_id)
+        user_behavior = get_user_behavior()
+        user_behavior.track_add_to_cart(user_id, product_id, variant_id)
 
         return {
             "status": "success",
             "message": "Add-to-cart tracked successfully",
             "product_id": product_id,
+            "variant_id": variant_id,
             "user_id": user_id,
             "timestamp": time.time(),
         }
@@ -339,16 +363,21 @@ async def track_add_to_cart(
 @router.post("/track-purchase", response_model=Dict[str, Any])
 async def track_purchase(
     product_id: str = Query(..., description="The ID of the product purchased"),
+    variant_id: Optional[str] = Query(
+        None, description="The SKU/variant ID (recommended for conversion tracking)"
+    ),
     user_id: str = Header(..., description="User ID for tracking"),
 ):
-    """Track that a user purchased a product"""
+    """Track that a user purchased a product. variant_id recommended for conversion tracking"""
     try:
-        product_recommender.track_purchase(user_id, product_id)
+        user_behavior = get_user_behavior()
+        user_behavior.track_purchase(user_id, product_id, variant_id)
 
         return {
             "status": "success",
             "message": "Purchase tracked successfully",
             "product_id": product_id,
+            "variant_id": variant_id,
             "user_id": user_id,
             "timestamp": time.time(),
         }

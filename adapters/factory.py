@@ -39,10 +39,11 @@ def create_event_processor() -> EventProcessorInterface:
 
     if processor_type == "kafka":
         from adapters.messaging.kafka_adapter import KafkaEventProcessor
+
         return KafkaEventProcessor(
             bootstrap_servers=config.KAFKA_BOOTSTRAP_SERVERS,
             topic=config.KAFKA_TOPIC,
-            group_id=config.KAFKA_GROUP_ID
+            group_id=config.KAFKA_GROUP_ID,
         )
 
     raise ValueError(f"Unknown event processor type: {processor_type}")

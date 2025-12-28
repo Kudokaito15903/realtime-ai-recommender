@@ -85,7 +85,6 @@ class MongoDBProductStore(ProductStoreInterface):
                 "price": float(price or 0),
                 "updated_at": datetime.utcnow(),
             }
-            
             # Store all other fields in a metadata/document field
             metadata = {
                 k: v
@@ -214,7 +213,7 @@ class MongoDBUserBehavior(UserBehaviorInterface):
             raise
 
     def _track_interaction(
-        self, user_id: str, product_id: str, interaction_type: str
+        self, user_id: str, product_id: str, interaction_type: str, variant_id: Optional[str] = None
     ) -> bool:
         """Internal method to track any interaction"""
         try:
@@ -224,28 +223,33 @@ class MongoDBUserBehavior(UserBehaviorInterface):
                 "interaction_type": interaction_type,
                 "timestamp": datetime.utcnow(),
             }
+            # Add variant_id if provided (important for add_to_cart and purchase)
+            if variant_id:
+                interaction["variant_id"] = variant_id
+                interaction["sku"] = variant_id  # Alias for compatibility
+            
             self.interactions_collection.insert_one(interaction)
-            logger.debug(f"Tracked {interaction_type} for user {user_id}, product {product_id}")
+            logger.debug(f"Tracked {interaction_type} for user {user_id}, product {product_id}, variant {variant_id or 'N/A'}")
             return True
         except PyMongoError as e:
             logger.error(f"Error tracking {interaction_type}: {e}")
             return False
 
-    def track_view(self, user_id: str, product_id: str) -> bool:
-        """Track a product view by user"""
-        return self._track_interaction(user_id, product_id, "view")
+    def track_view(self, user_id: str, product_id: str, variant_id: Optional[str] = None) -> bool:
+        """Track a product view by user. variant_id optional (usually not tracked for views)"""
+        return self._track_interaction(user_id, product_id, "view", variant_id)
 
-    def track_click(self, user_id: str, product_id: str) -> bool:
-        """Track a product click by user"""
-        return self._track_interaction(user_id, product_id, "click")
+    def track_click(self, user_id: str, product_id: str, variant_id: Optional[str] = None) -> bool:
+        """Track a product click by user. variant_id optional"""
+        return self._track_interaction(user_id, product_id, "click", variant_id)
 
-    def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
-        """Track a product add-to-cart by user"""
-        return self._track_interaction(user_id, product_id, "add_to_cart")
+    def track_add_to_cart(self, user_id: str, product_id: str, variant_id: Optional[str] = None) -> bool:
+        """Track a product add-to-cart by user. variant_id recommended for conversion tracking"""
+        return self._track_interaction(user_id, product_id, "add_to_cart", variant_id)
 
-    def track_purchase(self, user_id: str, product_id: str) -> bool:
-        """Track a product purchase by user"""
-        return self._track_interaction(user_id, product_id, "purchase")
+    def track_purchase(self, user_id: str, product_id: str, variant_id: Optional[str] = None) -> bool:
+        """Track a product purchase by user. variant_id recommended for conversion tracking"""
+        return self._track_interaction(user_id, product_id, "purchase", variant_id)
 
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Get user's recent product interactions"""
@@ -305,7 +309,10 @@ class MongoDBUserBehavior(UserBehaviorInterface):
                 pipeline.insert(-1, {"$match": {"product.category": category}})
                 pipeline.insert(-1, {"$unwind": "$product"})
             
-            results = list(self.interactions_collection.aggregate(pipeline))
+            results = list(self.interactions_collection.aggregate(
+                pipeline, 
+                allowDiskUse=True
+            ))
             
             popular = []
             for result in results:

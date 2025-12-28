@@ -188,7 +188,7 @@ class SupabaseProductStore(ProductStoreInterface):
                     category = category_id[0]
                 elif isinstance(category_id, str):
                     category = category_id
-            
+
             # Extract price from first variant if not at product level
             price = product_data.get("price")
             if price is None and product_data.get("productVariants"):
@@ -197,7 +197,7 @@ class SupabaseProductStore(ProductStoreInterface):
                     first_variant = variants[0]
                     if isinstance(first_variant, dict):
                         price = first_variant.get("price")
-            
+
             # Prepare product data for storage
             product = {
                 "product_id": product_data["id"],

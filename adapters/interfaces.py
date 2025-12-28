@@ -110,23 +110,31 @@ class UserBehaviorInterface(ABC):
     """Abstract interface for user behavior tracking"""
 
     @abstractmethod
-    def track_view(self, user_id: str, product_id: str) -> bool:
-        """Track a product view by user"""
+    def track_view(
+        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+    ) -> bool:
+        """Track a product view by user. variant_id optional (for product-level tracking)"""
         pass
 
     @abstractmethod
-    def track_click(self, user_id: str, product_id: str) -> bool:
-        """Track a product click by user"""
+    def track_click(
+        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+    ) -> bool:
+        """Track a product click by user. variant_id optional"""
         pass
 
     @abstractmethod
-    def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
-        """Track a product add-to-cart by user"""
+    def track_add_to_cart(
+        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+    ) -> bool:
+        """Track a product add-to-cart by user. variant_id recommended for conversion tracking"""
         pass
 
     @abstractmethod
-    def track_purchase(self, user_id: str, product_id: str) -> bool:
-        """Track a product purchase by user"""
+    def track_purchase(
+        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+    ) -> bool:
+        """Track a product purchase by user. variant_id recommended for conversion tracking"""
         pass
 
     @abstractmethod

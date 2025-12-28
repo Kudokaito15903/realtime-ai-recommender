@@ -57,7 +57,9 @@ MONGODB_DB = os.getenv("MONGODB_DB", "realtime_ai")
 MONGODB_USER = os.getenv("MONGODB_USER", None)
 MONGODB_PASSWORD = os.getenv("MONGODB_PASSWORD", None)
 MONGODB_AUTH_SOURCE = os.getenv("MONGODB_AUTH_SOURCE", "admin")
-MONGODB_URI = os.getenv("MONGODB_URI", None)  # Full connection string (overrides individual settings)
+MONGODB_URI = os.getenv(
+    "MONGODB_URI", None
+)  # Full connection string (overrides individual settings)
 
 # ================================
 # LEGACY REDIS CONFIGURATION

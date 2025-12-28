@@ -29,6 +29,7 @@ class BackendInfoResponse(BaseModel):
 
 class Specification(BaseModel):
     """Model for product specification"""
+
     key: str
     value: Union[str, int, float]
     type: str  # "TEXT", "NUMBER", etc.
@@ -37,6 +38,7 @@ class Specification(BaseModel):
 
 class ProductVariant(BaseModel):
     """Model for product variant"""
+
     sku: str
     variantName: str
     color: Optional[str] = None
@@ -58,7 +60,9 @@ class ProductBase(BaseModel):
     videoUrl: Optional[str] = None
     avgRating: Optional[float] = 0.0
     categoryId: Optional[List[str]] = None  # Changed to list
-    specifications: Optional[List[Specification]] = None  # Changed to list of Specification
+    specifications: Optional[List[Specification]] = (
+        None  # Changed to list of Specification
+    )
     productVariants: Optional[List[ProductVariant]] = None
 
     # Legacy/optional fields for backward compatibility
@@ -96,7 +100,9 @@ class ProductUpdate(BaseModel):
     avgRating: Optional[float] = None
     videoUrl: Optional[str] = None
     categoryId: Optional[Union[str, List[str]]] = None  # Support both string and list
-    specifications: Optional[Union[Dict[str, Any], List[Specification]]] = None  # Support both formats
+    specifications: Optional[Union[Dict[str, Any], List[Specification]]] = (
+        None  # Support both formats
+    )
     thumbnail: Optional[str] = None
     imageList: Optional[List[str]] = None
     attributes: Optional[Dict[str, Any]] = None
@@ -136,6 +142,15 @@ class SimilarProductResult(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class RecommendedVariant(BaseModel):
+    """Model for recommended variant"""
+
+    sku: str
+    variantName: str
+    color: Optional[str] = None
+    price: float
+
+
 class ProductRecommendation(BaseModel):
     """Model for product recommendation"""
 
@@ -143,6 +158,9 @@ class ProductRecommendation(BaseModel):
     score: float
     recommendation_type: (
         str  # "similar", "frequently_bought_together", "popular_in_category"
+    )
+    recommended_variant: Optional[RecommendedVariant] = (
+        None  # Selected variant for this product
     )
 
 

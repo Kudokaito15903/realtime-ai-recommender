@@ -88,19 +88,36 @@ class SimilaritySearch:
         )
         return results
 
-    def search_by_product_attributes(
-        self, attributes: Dict[str, Any], limit: int = 10, threshold: float = 0.65
+    def search_by_specifications(
+        self, specifications: Any, limit: int = 10, threshold: float = 0.65
     ) -> List[Dict[str, Any]]:
-        """Find products similar to the given attributes"""
-        # Convert attributes to a descriptive text for embedding
-        attr_text = " ".join([f"{k}: {v}" for k, v in attributes.items() if v])
+        """
+        Find products similar to the given specifications.
+        specifications can be a Dict or a List of Dicts/Specification objects.
+        """
+        # Convert specifications to descriptive text
+        spec_text = ""
+        if isinstance(specifications, dict):
+            spec_text = " ".join([f"{k}: {v}" for k, v in specifications.items() if v])
+        elif isinstance(specifications, list):
+            # Handle list of Specification objects or dicts
+            parts = []
+            for spec in specifications:
+                if isinstance(spec, dict):
+                    key = spec.get("key") or spec.get("name")
+                    val = spec.get("value")
+                    if key and val:
+                        parts.append(f"{key}: {val}")
+                elif hasattr(spec, "key") and hasattr(spec, "value"):
+                    parts.append(f"{spec.key}: {spec.value}")
+            spec_text = " ".join(parts)
 
-        if not attr_text:
-            logger.warning("No valid attributes provided for search")
+        if not spec_text:
+            logger.warning("No valid specifications provided for search")
             return []
 
         # Use text search with the attribute string
-        return self.search_by_text(attr_text, limit, threshold)
+        return self.search_by_text(spec_text, limit, threshold)
 
     def hybrid_search(
         self,

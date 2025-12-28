@@ -72,8 +72,6 @@ class ProductBase(BaseModel):
     thumbnail: Optional[str] = None
     imageList: Optional[List[str]] = None
 
-    attributes: Dict[str, Any] = Field(default_factory=dict)
-
 
 class ProductCreate(ProductBase):
     """Model for creating a new product"""
@@ -105,7 +103,6 @@ class ProductUpdate(BaseModel):
     )
     thumbnail: Optional[str] = None
     imageList: Optional[List[str]] = None
-    attributes: Optional[Dict[str, Any]] = None
     brandName: Optional[str] = None
     productVariants: Optional[List[ProductVariant]] = None
 

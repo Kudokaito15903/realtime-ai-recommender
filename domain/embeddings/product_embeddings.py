@@ -146,18 +146,21 @@ class ProductEmbeddingModel:
 
         # Product variants info (include variant names and colors)
         variants = product_data.get("productVariants")
-        if variants and isinstance(variants, list):
-            variant_info = []
-            for variant in variants:
-                if isinstance(variant, dict):
-                    variant_name = variant.get("variantName", "")
-                    color = variant.get("color", "")
-                    if variant_name:
-                        variant_info.append(variant_name)
-                    if color:
-                        variant_info.append(f"Color: {color}")
-            if variant_info:
-                text_parts.append(f"Variants: {', '.join(variant_info)}")
+        if variants:
+            colors = set()
+            variant_names = set()
+
+            for v in variants:
+                if v.get("color"):
+                    colors.add(v["color"])
+                if v.get("variantName"):
+                    variant_names.add(v["variantName"])
+
+            if colors:
+                text_parts.append(f"Available colors: {', '.join(colors)}")
+
+            if variant_names:
+                text_parts.append(f"Variants: {', '.join(variant_names)}")
 
         # Combine all text parts
         combined_text = " ".join(text_parts)

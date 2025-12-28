@@ -245,11 +245,26 @@ CATEGORIES = {
             "high quality sound",
             "long battery life",
         ],
-        "attributes": lambda: {
-            "brand": random.choice(["SoundMax", "AudioPro", "BeatX"]),
-            "battery_life": random.choice(["20h", "24h", "30h"]),
-            "connectivity": "Bluetooth",
-        },
+        "specifications": lambda: [
+            {
+                "key": "brand",
+                "value": random.choice(["SoundMax", "AudioPro", "BeatX"]),
+                "type": "TEXT",
+                "group": "GENERAL",
+            },
+            {
+                "key": "battery_life",
+                "value": random.choice(["20h", "24h", "30h"]),
+                "type": "TEXT",
+                "group": "TECHNICAL",
+            },
+            {
+                "key": "connectivity",
+                "value": "Bluetooth",
+                "type": "TEXT",
+                "group": "TECHNICAL",
+            },
+        ],
     },
     "Gaming Accessories": {
         "names": ["Gaming Mouse", "Mechanical Keyboard", "Gaming Headset"],
@@ -260,11 +275,21 @@ CATEGORIES = {
             "ergonomic design",
             "fast response",
         ],
-        "attributes": lambda: {
-            "brand": random.choice(["ProGamer", "HyperPlay"]),
-            "rgb": True,
-            "dpi": random.choice([8000, 12000, 16000]),
-        },
+        "specifications": lambda: [
+            {
+                "key": "brand",
+                "value": random.choice(["ProGamer", "HyperPlay"]),
+                "type": "TEXT",
+                "group": "GENERAL",
+            },
+            {"key": "rgb", "value": "Yes", "type": "TEXT", "group": "TECHNICAL"},
+            {
+                "key": "dpi",
+                "value": str(random.choice([8000, 12000, 16000])),
+                "type": "NUMBER",
+                "group": "TECHNICAL",
+            },
+        ],
     },
     "Wearables": {
         "names": ["Smart Watch", "Fitness Tracker"],
@@ -275,20 +300,40 @@ CATEGORIES = {
             "gps",
             "waterproof",
         ],
-        "attributes": lambda: {
-            "brand": random.choice(["FitLife", "HealthPlus"]),
-            "gps": random.choice([True, False]),
-            "waterproof": True,
-        },
+        "specifications": lambda: [
+            {
+                "key": "brand",
+                "value": random.choice(["FitLife", "HealthPlus"]),
+                "type": "TEXT",
+                "group": "GENERAL",
+            },
+            {
+                "key": "gps",
+                "value": str(random.choice([True, False])),
+                "type": "TEXT",
+                "group": "TECHNICAL",
+            },
+            {"key": "waterproof", "value": "Yes", "type": "TEXT", "group": "TECHNICAL"},
+        ],
     },
     "Sportswear": {
         "names": ["Running Shoes", "Training Shoes"],
         "keywords": ["lightweight", "breathable mesh", "comfortable", "durable sole"],
-        "attributes": lambda: {
-            "brand": random.choice(["RunFast", "ActiveWear"]),
-            "material": "Mesh",
-            "gender": random.choice(["Men", "Women"]),
-        },
+        "specifications": lambda: [
+            {
+                "key": "brand",
+                "value": random.choice(["RunFast", "ActiveWear"]),
+                "type": "TEXT",
+                "group": "GENERAL",
+            },
+            {"key": "material", "value": "Mesh", "type": "TEXT", "group": "MATERIAL"},
+            {
+                "key": "gender",
+                "value": random.choice(["Men", "Women"]),
+                "type": "TEXT",
+                "group": "GENERAL",
+            },
+        ],
     },
 }
 
@@ -319,15 +364,20 @@ def generate_product():
     name = random.choice(config["names"])
     description = generate_description(name, config["keywords"])
 
+    # Extract brand for top-level field
+    specs = config["specifications"]()
+    brand = next((s["value"] for s in specs if s["key"] == "brand"), "Generic")
+
     return {
         "id": str(uuid4()),
         "name": name,
         "description": description,
         "category": category,
         "price": random_price(category),
+        "brandName": brand,
         "sku": "SKU-"
         + "".join(random.choices(string.ascii_uppercase + string.digits, k=8)),
-        "attributes": config["attributes"](),
+        "specifications": specs,
     }
 
 

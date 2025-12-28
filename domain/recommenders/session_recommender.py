@@ -103,9 +103,8 @@ def build_transition_stats(
                 product = product_store.get_product(pid_s)
                 if product:
                     category = product.get("category")
-                    brand = product.get("brand") or product.get("attributes", {}).get(
-                        "brand"
-                    )
+                    category = product.get("category")
+                    brand = product.get("brand") or product.get("brandName")
                     product_metadata[pid_s] = (category, brand)
                     if category:
                         popularity_by_category[category][pid_s] += weight

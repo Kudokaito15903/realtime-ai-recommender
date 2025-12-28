@@ -180,13 +180,31 @@ class SupabaseProductStore(ProductStoreInterface):
     def store_product(self, product_data: Dict[str, Any]) -> bool:
         """Store or update a product in Supabase"""
         try:
+            # Extract category from categoryId if category is not provided
+            category = product_data.get("category")
+            if not category and product_data.get("categoryId"):
+                category_id = product_data.get("categoryId")
+                if isinstance(category_id, list) and len(category_id) > 0:
+                    category = category_id[0]
+                elif isinstance(category_id, str):
+                    category = category_id
+            
+            # Extract price from first variant if not at product level
+            price = product_data.get("price")
+            if price is None and product_data.get("productVariants"):
+                variants = product_data.get("productVariants")
+                if variants and len(variants) > 0:
+                    first_variant = variants[0]
+                    if isinstance(first_variant, dict):
+                        price = first_variant.get("price")
+            
             # Prepare product data for storage
             product = {
                 "product_id": product_data["id"],
                 "name": product_data.get("name", ""),
                 "description": product_data.get("description", ""),
-                "category": product_data.get("category", ""),
-                "price": product_data.get("price", 0),
+                "category": category or "",
+                "price": price or 0,
                 "metadata": json.dumps(
                     {
                         k: v

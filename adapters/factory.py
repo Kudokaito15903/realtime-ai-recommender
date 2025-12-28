@@ -37,6 +37,14 @@ def create_event_processor() -> EventProcessorInterface:
 
         return get_postgres_event_processor()
 
+    if processor_type == "kafka":
+        from adapters.messaging.kafka_adapter import KafkaEventProcessor
+        return KafkaEventProcessor(
+            bootstrap_servers=config.KAFKA_BOOTSTRAP_SERVERS,
+            topic=config.KAFKA_TOPIC,
+            group_id=config.KAFKA_GROUP_ID
+        )
+
     raise ValueError(f"Unknown event processor type: {processor_type}")
 
 
@@ -54,6 +62,11 @@ def create_product_store() -> ProductStoreInterface:
 
         return get_postgres_product_store()
 
+    if store_type == "mongodb":
+        from adapters.database.mongodb_adapter import get_mongodb_product_store
+
+        return get_mongodb_product_store()
+
     raise ValueError(f"Unknown product store type: {store_type}")
 
 
@@ -70,6 +83,11 @@ def create_user_behavior() -> UserBehaviorInterface:
         from adapters.database.postgres_adapter import get_postgres_user_behavior
 
         return get_postgres_user_behavior()
+
+    if behavior_type == "mongodb":
+        from adapters.database.mongodb_adapter import get_mongodb_user_behavior
+
+        return get_mongodb_user_behavior()
 
     raise ValueError(f"Unknown user behavior store type: {behavior_type}")
 

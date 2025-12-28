@@ -24,6 +24,11 @@ DATA_STORE_TYPE = os.getenv(
 )  # redis, supabase, postgresql, sqlite
 BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 
+# Kafka Configuration
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "product-events")
+KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recommender-group")
+
 # ================================
 # CLOUD SERVICES CONFIGURATION
 # ================================
@@ -44,6 +49,15 @@ POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
 POSTGRES_DB = os.getenv("POSTGRES_DB", "realtime_ai")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "realtime_ai")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "realtime_ai")
+
+# MongoDB Configuration
+MONGODB_HOST = os.getenv("MONGODB_HOST", "localhost")
+MONGODB_PORT = int(os.getenv("MONGODB_PORT", 27017))
+MONGODB_DB = os.getenv("MONGODB_DB", "realtime_ai")
+MONGODB_USER = os.getenv("MONGODB_USER", None)
+MONGODB_PASSWORD = os.getenv("MONGODB_PASSWORD", None)
+MONGODB_AUTH_SOURCE = os.getenv("MONGODB_AUTH_SOURCE", "admin")
+MONGODB_URI = os.getenv("MONGODB_URI", None)  # Full connection string (overrides individual settings)
 
 # ================================
 # LEGACY REDIS CONFIGURATION

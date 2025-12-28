@@ -8,6 +8,8 @@ redis
 sentence-transformers
 torch
 psycopg2-binary
+pymongo
+kafka-python
 
 # Machine Learning và embedding dependencies
 numpy

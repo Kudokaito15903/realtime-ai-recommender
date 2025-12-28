@@ -7,7 +7,7 @@ import os
 import sys
 import time
 import threading
-from typing import List
+from typing import List, Dict, Any
 import numpy as np
 from loguru import logger
 from sentence_transformers import SentenceTransformer
@@ -91,6 +91,85 @@ class ProductEmbeddingModel:
             normalize_embeddings=True,
             convert_to_numpy=True,
         ).astype(np.float32)
+
+    def get_product_embedding(self, product_data: Dict[str, Any]) -> np.ndarray:
+        """
+        Generate embedding for product data.
+        Combines semantic text fields (name, description, brand, specifications, etc.)
+        and generates a normalized embedding vector.
+        """
+        
+        # Extract text fields for embedding
+        text_parts = []
+        
+        # Basic product info
+        if product_data.get("name"):
+            text_parts.append(str(product_data["name"]))
+        
+        if product_data.get("description"):
+            text_parts.append(str(product_data["description"]))
+        
+        if product_data.get("brandName"):
+            text_parts.append(f"Brand: {product_data['brandName']}")
+        
+        # Category information
+        category_id = product_data.get("categoryId")
+        if category_id:
+            if isinstance(category_id, list):
+                text_parts.append(f"Categories: {', '.join(category_id)}")
+            else:
+                text_parts.append(f"Category: {category_id}")
+        
+        if product_data.get("category"):
+            text_parts.append(f"Category: {product_data['category']}")
+        
+        # Specifications
+        specifications = product_data.get("specifications")
+        if specifications:
+            if isinstance(specifications, list):
+                # Handle list of Specification objects
+                spec_texts = []
+                for spec in specifications:
+                    if isinstance(spec, dict):
+                        key = spec.get("key", "")
+                        value = spec.get("value", "")
+                        group = spec.get("group", "")
+                        if key and value:
+                            spec_texts.append(f"{key}: {value}")
+                if spec_texts:
+                    text_parts.append(f"Specifications: {', '.join(spec_texts)}")
+            elif isinstance(specifications, dict):
+                # Handle legacy dict format
+                spec_texts = [f"{k}: {v}" for k, v in specifications.items()]
+                if spec_texts:
+                    text_parts.append(f"Specifications: {', '.join(spec_texts)}")
+        
+        # Product variants info (include variant names and colors)
+        variants = product_data.get("productVariants")
+        if variants and isinstance(variants, list):
+            variant_info = []
+            for variant in variants:
+                if isinstance(variant, dict):
+                    variant_name = variant.get("variantName", "")
+                    color = variant.get("color", "")
+                    if variant_name:
+                        variant_info.append(variant_name)
+                    if color:
+                        variant_info.append(f"Color: {color}")
+            if variant_info:
+                text_parts.append(f"Variants: {', '.join(variant_info)}")
+        
+        # Combine all text parts
+        combined_text = " ".join(text_parts)
+        
+        # Generate embedding
+        return self.embed_text(combined_text)
+    
+    def get_embedding(self, text: str) -> np.ndarray:
+        """
+        Alias for embed_text for backward compatibility.
+        """
+        return self.embed_text(text)
 
     @property
     def embedding_dimension(self) -> int:

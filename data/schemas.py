@@ -27,23 +27,44 @@ class BackendInfoResponse(BaseModel):
     vector_store_stats: bool = None
 
 
+class Specification(BaseModel):
+    """Model for product specification"""
+    key: str
+    value: Union[str, int, float]
+    type: str  # "TEXT", "NUMBER", etc.
+    group: str  # "TECHNICAL", "DISPLAY", etc.
+
+
+class ProductVariant(BaseModel):
+    """Model for product variant"""
+    sku: str
+    variantName: str
+    color: Optional[str] = None
+    price: float
+    bestSpecifications: Optional[List["Specification"]] = None
+
+
 class ProductBase(BaseModel):
     """Base model for product data"""
 
     name: str
     description: str
-    category: str
-    price: float
-    sku: str
+    category: Optional[str] = None  # Made optional for variant-based products
+    price: Optional[float] = None  # Made optional, can be in variants
+    sku: Optional[str] = None  # Made optional, can be in variants
 
-    # Optional/semantic fields used in embeddings and ranking
+    # New fields from the JSON structure
+    brandName: Optional[str] = None
+    videoUrl: Optional[str] = None
+    avgRating: Optional[float] = 0.0
+    categoryId: Optional[List[str]] = None  # Changed to list
+    specifications: Optional[List[Specification]] = None  # Changed to list of Specification
+    productVariants: Optional[List[ProductVariant]] = None
+
+    # Legacy/optional fields for backward compatibility
     color: Optional[str] = None
     listPrice: Optional[float] = None
     sold: Optional[int] = None
-    avgRating: Optional[float] = None
-    videoUrl: Optional[str] = None
-    categoryId: Optional[str] = None
-    specifications: Optional[Dict[str, Any]] = None
     thumbnail: Optional[str] = None
     imageList: Optional[List[str]] = None
 
@@ -74,11 +95,13 @@ class ProductUpdate(BaseModel):
     sold: Optional[int] = None
     avgRating: Optional[float] = None
     videoUrl: Optional[str] = None
-    categoryId: Optional[str] = None
-    specifications: Optional[Dict[str, Any]] = None
+    categoryId: Optional[Union[str, List[str]]] = None  # Support both string and list
+    specifications: Optional[Union[Dict[str, Any], List[Specification]]] = None  # Support both formats
     thumbnail: Optional[str] = None
     imageList: Optional[List[str]] = None
     attributes: Optional[Dict[str, Any]] = None
+    brandName: Optional[str] = None
+    productVariants: Optional[List[ProductVariant]] = None
 
 
 class Product(ProductBase):
@@ -129,3 +152,7 @@ class RecommendationResponse(BaseModel):
     recommendations: List[ProductRecommendation]
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Update forward references
+ProductVariant.update_forward_refs()

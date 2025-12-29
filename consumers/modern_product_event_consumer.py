@@ -37,9 +37,14 @@ class ModernProductEventConsumer:
     def _handle_event(self, event_data: dict) -> None:
         """Handle incoming product events (backend-agnostic)"""
         event_type = event_data.get("event_type")
-        product_id = event_data.get("product_id")
+        # Try product_id first, then fallback to id
+        product_id = event_data.get("product_id") or event_data.get("id")
         data = event_data.get("data", {})
         timestamp = event_data.get("timestamp")
+
+        # If product_id still not found, try to get from data
+        if not product_id and isinstance(data, dict):
+            product_id = data.get("id") or data.get("product_id")
 
         logger.debug(
             f"Processing {event_type} event for product {product_id} from {timestamp}"
@@ -79,16 +84,36 @@ class ModernProductEventConsumer:
                 )
 
             # Generate embedding for the product
-
             start_time = time.time()
             product_embedding = self.embedding_model.get_product_embedding(product_data)
 
-            # Prepare metadata for vector storage
+            # Prepare metadata for vector storage (matching API route logic)
+            # Extract category from categoryId if available
+            category = product_data.get("category")
+            if not category and product_data.get("categoryId"):
+                category_id = product_data.get("categoryId")
+                if isinstance(category_id, list) and len(category_id) > 0:
+                    category = category_id[0]
+                elif isinstance(category_id, str):
+                    category = category_id
+
+            # Get price from first variant if not at product level
+            price = product_data.get("price")
+            if price is None and product_data.get("productVariants"):
+                variants = product_data.get("productVariants")
+                if variants and len(variants) > 0:
+                    price = (
+                        variants[0].get("price")
+                        if isinstance(variants[0], dict)
+                        else None
+                    )
+
             metadata = {
-                "category": product_data.get("category", "unknown"),
+                "category": category or "unknown",
                 "name": product_data.get("name", "unknown"),
-                "price": str(product_data.get("price", 0)),
+                "price": str(price or 0),
                 "description": product_data.get("description", ""),
+                "brandName": product_data.get("brandName", ""),
             }
 
             # Store in vector database

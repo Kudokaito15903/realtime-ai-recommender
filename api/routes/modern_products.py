@@ -212,70 +212,13 @@ async def create_product(product: ProductCreate):
         if not product_id:
             raise HTTPException(status_code=400, detail="Product ID is required")
 
-        # Store product in product store if available
-        if PRODUCT_STORE_AVAILABLE:
-            try:
-                product_store.store_product(product_data)
-                logger.info(f"Stored product {product_id} in product store")
-            except Exception as e:
-                logger.error(
-                    f"Failed to store product {product_id} in product store: {e}"
-                )
-                # Continue even if product store fails
-
-        # Generate embedding for the product
-        try:
-            start_time = time.time()
-            product_embedding = embedding_model.get_product_embedding(product_data)
-
-            # Prepare metadata for vector storage
-            # Extract category from categoryId if available
-            category = product_data.get("category")
-            if not category and product_data.get("categoryId"):
-                category_id = product_data.get("categoryId")
-                if isinstance(category_id, list) and len(category_id) > 0:
-                    category = category_id[0]
-                elif isinstance(category_id, str):
-                    category = category_id
-
-            # Get price from first variant if not at product level
-            price = product_data.get("price")
-            if price is None and product_data.get("productVariants"):
-                variants = product_data.get("productVariants")
-                if variants and len(variants) > 0:
-                    price = (
-                        variants[0].get("price")
-                        if isinstance(variants[0], dict)
-                        else None
-                    )
-
-            metadata = {
-                "category": category or "unknown",
-                "name": product_data.get("name", "unknown"),
-                "price": str(price or 0),
-                "description": product_data.get("description", ""),
-                "brandName": product_data.get("brandName", ""),
-            }
-
-            # Store in vector database
-            success = vector_store.store_product_embedding(
-                product_id=product_id, embedding=product_embedding, metadata=metadata
-            )
-
-            if success:
-                processing_time = time.time() - start_time
-                logger.info(f"Created product {product_id} in {processing_time:.4f}s")
-            else:
-                logger.error(f"Failed to store embedding for product {product_id}")
-        except Exception as e:
-            logger.error(f"Error generating embedding for product {product_id}: {e}")
-            # Continue even if embedding generation fails
-
-        # Publish event if event processor is available
+        # Publish event - event consumer will handle product storage and embedding generation
+        # This avoids duplicate processing (embedding generation and storage)
         if event_processor:
             try:
                 event_data = {
                     "id": product_id,
+                    "product_id": product_id,  # Ensure product_id is set for consumer
                     "event_type": "create",
                     "timestamp": time.time(),
                     "data": product_data,
@@ -284,10 +227,19 @@ async def create_product(product: ProductCreate):
                 logger.info(f"Published create event for product {product_id}")
             except Exception as e:
                 logger.error(f"Failed to publish event for product {product_id}: {e}")
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to publish event: {str(e)}"
+                )
+        else:
+            logger.warning("Event processor not available, product will not be processed")
+            raise HTTPException(
+                status_code=503, detail="Event processor not available"
+            )
 
         return {
             "id": product_id,
             "status": "created",
+            "message": "Product creation event published. Processing will happen asynchronously.",
             "product": product_data,
         }
 

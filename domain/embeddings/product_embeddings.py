@@ -162,9 +162,28 @@ class ProductEmbeddingModel:
             if variant_names:
                 text_parts.append(f"Variants: {', '.join(variant_names)}")
 
+            # Extract unique specs from bestSpecifications in variants
+            variant_specs_set = set()
+            for v in variants:
+                best_specs = v.get("bestSpecifications")
+                if best_specs and isinstance(best_specs, list):
+                    for spec in best_specs:
+                        if isinstance(spec, dict):
+                            key = spec.get("key")
+                            value = spec.get("value")
+                            if key and value:
+                                variant_specs_set.add(f"{key}: {value}")
+            
+            if variant_specs_set:
+                text_parts.append(f"Variant Features: {', '.join(variant_specs_set)}")
+
+        # Fallback for top-level color if no variant colors were found
+        # (This handles the case where variants might be missing or didn't specify color)
+        if "color" in product_data and not any(v.get("color") for v in (variants or [])):
+             text_parts.append(f"Color: {product_data['color']}")
+
         # Combine all text parts
         combined_text = " ".join(text_parts)
-
         # Generate embedding
         return self.embed_text(combined_text)
 

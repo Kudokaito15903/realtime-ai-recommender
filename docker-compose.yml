@@ -1,157 +1,229 @@
-version: '3.8'
+# version: '3.8'
 
+# services:
+#   postgres:
+#     image: postgres:16
+#     container_name: realtime-ai-postgres
+#     environment:
+#       - POSTGRES_DB=realtime_ai
+#       - POSTGRES_USER=realtime_ai
+#       - POSTGRES_PASSWORD=realtime_ai
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U realtime_ai -d realtime_ai"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#     networks:
+#       - ai-recommender-network
+#     restart: unless-stopped
+#   # Redis service with RedisSearch module for vector similarity search
+#   redis:
+#     image: redis/redis-stack-server:7.2.0-v7
+#     container_name: realtime-ai-redis
+#     ports:
+#       - "6379:6379"
+#     volumes:
+#       - redis_data:/data
+#     command: >
+#       redis-stack-server
+#       --appendonly yes
+#       --maxmemory 2gb
+#       --maxmemory-policy allkeys-lru
+#       --protected-mode no
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 10s
+#       timeout: 3s
+#       retries: 5
+#     networks:
+#       - ai-recommender-network
+#     restart: unless-stopped
+
+#   # FastAPI Application
+#   api:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: realtime-ai-api
+#     ports:
+#       - "8000:8000"
+#     env_file:
+#       - .env
+#     environment:
+#       - REDIS_HOST=redis
+#       - REDIS_PORT=6379
+#       - POSTGRES_HOST=postgres
+#       - POSTGRES_PORT=5432
+#       - POSTGRES_DB=realtime_ai
+#       - POSTGRES_USER=realtime_ai
+#       - POSTGRES_PASSWORD=realtime_ai
+#       - API_HOST=0.0.0.0
+#       - API_PORT=8000
+#       - DEBUG_MODE=false
+#       - LOG_LEVEL=INFO
+#     volumes:
+#       - .:/app
+#       - model_cache:/app/model_cache
+#       - logs:/app/logs
+#     depends_on:
+#       redis:
+#         condition: service_healthy
+#       postgres:
+#         condition: service_healthy
+#     networks:
+#       - ai-recommender-network
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+#     command: >
+#       uvicorn api.app:app
+#       --host 0.0.0.0
+#       --port 8000
+#       --workers 2
+#       --log-level info
+
+#   # Stream Consumer Service (Background worker)
+#   stream-consumer:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: realtime-ai-consumer
+#     env_file:
+#       - .env
+#     environment:
+#       - REDIS_HOST=redis
+#       - REDIS_PORT=6379
+#       - POSTGRES_HOST=postgres
+#       - POSTGRES_PORT=5432
+#       - POSTGRES_DB=realtime_ai
+#       - POSTGRES_USER=realtime_ai
+#       - POSTGRES_PASSWORD=realtime_ai
+#       - LOG_LEVEL=INFO
+#     volumes:
+#       - .:/app
+#       - model_cache:/app/model_cache
+#       - logs:/app/logs
+#     depends_on:
+#       redis:
+#         condition: service_healthy
+#       api:
+#         condition: service_healthy
+#       postgres:
+#         condition: service_healthy
+#     networks:
+#       - ai-recommender-network
+#     restart: unless-stopped
+#     command: python -m services.stream_consumer
+#     # Alternative: Use modern consumer
+#     # command: python -m services.modern_stream_consumer
+
+#   # Optional: RedisInsight for Redis monitoring (Development only)
+#   redisinsight:
+#     image: redis/redisinsight:latest
+#     container_name: realtime-ai-redisinsight
+#     ports:
+#       - "8001:8001"
+#     volumes:
+#       - redisinsight_data:/data
+#     networks:
+#       - ai-recommender-network
+#     restart: unless-stopped
+#     profiles:
+#       - tools
+
+# networks:
+#   ai-recommender-network:
+#     driver: bridge
+
+# volumes:
+#   redis_data:
+#     driver: local
+#   model_cache:
+#     driver: local
+#   logs:
+#     driver: local
+#   redisinsight_data:
+#     driver: local
+#   postgres_data:
+#     driver: local
 services:
-  postgres:
-    image: postgres:16
-    container_name: realtime-ai-postgres
-    environment:
-      - POSTGRES_DB=realtime_ai
-      - POSTGRES_USER=realtime_ai
-      - POSTGRES_PASSWORD=realtime_ai
+  redpanda:
+    image: redpandadata/redpanda:v23.3.5
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:9094
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:9094
     ports:
-      - "5432:5432"
+      - "9094:9094"
+      - "9644:9644"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U realtime_ai -d realtime_ai"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - redpanda_data:/var/lib/redpanda/data
     networks:
-      - ai-recommender-network
-    restart: unless-stopped
-  # Redis service with RedisSearch module for vector similarity search
-  redis:
-    image: redis/redis-stack-server:7.2.0-v7
-    container_name: realtime-ai-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: >
-      redis-stack-server
-      --appendonly yes
-      --maxmemory 2gb
-      --maxmemory-policy allkeys-lru
-      --protected-mode no
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    networks:
-      - ai-recommender-network
-    restart: unless-stopped
+      - app-net
 
-  # FastAPI Application
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: realtime-ai-api
+  redpanda-console:
+    image: redpandadata/console:v2.5.2
+    container_name: redpanda-console
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "8080:8080"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=realtime_ai
-      - POSTGRES_USER=realtime_ai
-      - POSTGRES_PASSWORD=realtime_ai
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - DEBUG_MODE=false
-      - LOG_LEVEL=INFO
-    volumes:
-      - .:/app
-      - model_cache:/app/model_cache
-      - logs:/app/logs
+      - KAFKA_BROKERS=redpanda:9092
     depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - redpanda
     networks:
-      - ai-recommender-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    command: >
-      uvicorn api.app:app
-      --host 0.0.0.0
-      --port 8000
-      --workers 2
-      --log-level info
+      - app-net
 
-  # Stream Consumer Service (Background worker)
-  stream-consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: realtime-ai-consumer
-    env_file:
-      - .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=realtime_ai
-      - POSTGRES_USER=realtime_ai
-      - POSTGRES_PASSWORD=realtime_ai
-      - LOG_LEVEL=INFO
-    volumes:
-      - .:/app
-      - model_cache:/app/model_cache
-      - logs:/app/logs
-    depends_on:
-      redis:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    networks:
-      - ai-recommender-network
+  mongodb:
+    image: mongo
+    container_name: mongodb
     restart: unless-stopped
-    command: python -m services.stream_consumer
-    # Alternative: Use modern consumer
-    # command: python -m services.modern_stream_consumer
-
-  # Optional: RedisInsight for Redis monitoring (Development only)
-  redisinsight:
-    image: redis/redisinsight:latest
-    container_name: realtime-ai-redisinsight
     ports:
-      - "8001:8001"
+      - "27017:27017"
     volumes:
-      - redisinsight_data:/data
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=root
+      - MONGO_INITDB_DATABASE=realtime_ai
     networks:
-      - ai-recommender-network
-    restart: unless-stopped
-    profiles:
-      - tools
+      - app-net
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongo_express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=root
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=root
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin
+    depends_on:
+      - mongodb
+    networks:
+      - app-net
 
 networks:
-  ai-recommender-network:
+  app-net:
     driver: bridge
 
 volumes:
-  redis_data:
-    driver: local
-  model_cache:
-    driver: local
-  logs:
-    driver: local
-  redisinsight_data:
-    driver: local
-  postgres_data:
-    driver: local
-
+  mongo_data:
+  redpanda_data:

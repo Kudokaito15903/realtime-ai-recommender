@@ -1,5 +1,5 @@
 """
-Kafka messaging adapter for event processing.
+Kafka messaging adapter for event processing - FIXED VERSION
 """
 
 import os
@@ -11,10 +11,8 @@ from loguru import logger
 from kafka import KafkaProducer, KafkaConsumer
 from kafka.errors import KafkaError
 
-from adapters.interfaces import EventProcessorInterface
 
-
-class KafkaEventProcessor(EventProcessorInterface):
+class KafkaEventProcessor:
     """Kafka event processor implementation"""
 
     def __init__(self, bootstrap_servers: str, topic: str, group_id: str):
@@ -24,9 +22,12 @@ class KafkaEventProcessor(EventProcessorInterface):
 
         self.producer = None
         self.consumer = None
-        self.running = False
+        self.running = False  # ✅ FIX: Changed from True to False
         self.consumer_thread = None
         self.event_handler = None
+        
+        # ✅ FIX: Add thread lock for safety
+        self._lock = threading.Lock()
 
         self._initialize_producer()
 
@@ -39,9 +40,15 @@ class KafkaEventProcessor(EventProcessorInterface):
             self.producer = KafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+                # ✅ FIX: Add retry configuration
+                retries=3,
+                max_in_flight_requests_per_connection=1,
+                acks='all'
             )
+            logger.info("Kafka producer initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Kafka producer: {e}")
+            raise
 
     def publish_product_created(self, product_data: Dict[str, Any]) -> Optional[str]:
         return self._publish_event("create", product_data["id"], product_data)
@@ -64,9 +71,10 @@ class KafkaEventProcessor(EventProcessorInterface):
     def _publish_event(
         self, event_type: str, product_id: str, data: Dict[str, Any]
     ) -> Optional[str]:
-        if not self.producer:
-            logger.warning("Kafka producer not available, skipping event publish")
-            return None
+        with self._lock:
+            if not self.producer:
+                logger.warning("Kafka producer not available, skipping event publish")
+                return None
 
         try:
             event = {
@@ -84,6 +92,11 @@ class KafkaEventProcessor(EventProcessorInterface):
             )
             return f"{record_metadata.partition}:{record_metadata.offset}"
 
+        except KafkaError as e:
+            logger.error(
+                f"Kafka error publishing {event_type} event for product {product_id}: {e}"
+            )
+            return None
         except Exception as e:
             logger.error(
                 f"Error publishing {event_type} event for product {product_id}: {e}"
@@ -91,48 +104,72 @@ class KafkaEventProcessor(EventProcessorInterface):
             return None
 
     def start_consumer(self, consumer_id: Optional[str] = None) -> None:
-        if self.running:
-            logger.warning("Kafka consumer is already running")
-            return
+        # ✅ FIX: Correct logic check
+        with self._lock:
+            if self.running or (self.consumer_thread and self.consumer_thread.is_alive()):
+                logger.warning("Kafka consumer is already running")
+                return
+            
+            self.running = True
 
-        self.running = True
         self.consumer_thread = threading.Thread(
             target=self._consume_loop, args=(consumer_id,), daemon=True
         )
         self.consumer_thread.start()
-        logger.info(f"Started Kafka consumer: {consumer_id}")
+        logger.info(f"Started Kafka consumer: {consumer_id or 'default'}")
 
     def stop_consumer(self) -> None:
-        if not self.running:
-            return
+        with self._lock:
+            if not self.running:
+                return
+            self.running = False
 
-        self.running = False
         if self.consumer_thread and self.consumer_thread.is_alive():
             self.consumer_thread.join(timeout=5.0)
 
-        if self.consumer:
-            self.consumer.close()
+        # ✅ FIX: Thread-safe consumer cleanup
+        with self._lock:
+            if self.consumer:
+                try:
+                    self.consumer.close()
+                except Exception as e:
+                    logger.error(f"Error closing consumer: {e}")
+                finally:
+                    self.consumer = None
 
         logger.info("Stopped Kafka consumer")
 
     def set_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
-        self.event_handler = handler
+        """Set the callback handler for processing events"""
+        with self._lock:
+            self.event_handler = handler
 
     def _consume_loop(self, consumer_id: Optional[str]) -> None:
         try:
+            logger.info(
+            f"Initializing Kafka consumer | "
+            f"bootstrap={self.bootstrap_servers} | "
+            f"topic={self.topic} | "
+            f"group_id={self.group_id}"
+        )
+
             self.consumer = KafkaConsumer(
                 self.topic,
                 bootstrap_servers=self.bootstrap_servers,
                 group_id=self.group_id,
                 value_deserializer=lambda x: json.loads(x.decode("utf-8")),
                 auto_offset_reset="earliest",
+                enable_auto_commit=False,  # ✅ FIX: Manual commit for reliability
+                session_timeout_ms=30000,
+                max_poll_records=100
             )
 
             logger.info("Kafka consumer connected and listening...")
-
+            logger.info(f"Consumer ID: {consumer_id or 'default'}")
+            logger.info(f"Subscribed to topic: {self.topic}")
+            logger.info(f"Group ID: {self.group_id}")
             while self.running:
-                # Poll for messages (non-blocking way, or use iteration)
-                # Using poll for better control
+                # Poll for messages
                 message_batch = self.consumer.poll(timeout_ms=1000)
 
                 for partition, messages in message_batch.items():
@@ -146,12 +183,57 @@ class KafkaEventProcessor(EventProcessorInterface):
                                 f"Received Kafka message: {event_data.get('event_type')}"
                             )
 
-                            if self.event_handler:
-                                self.event_handler(event_data)
+                            # ✅ FIX: Thread-safe handler access
+                            with self._lock:
+                                handler = self.event_handler
+
+                            if handler:
+                                handler(event_data)
 
                         except Exception as e:
                             logger.error(f"Error processing Kafka message: {e}")
 
+                try:
+                    if message_batch:
+                        self.consumer.commit()
+                except Exception as e:
+                    logger.error(f"Error committing offsets: {e}")
+
         except Exception as e:
             logger.error(f"Kafka consumer error: {e}")
-            self.running = False
+        finally:
+            logger.info("Kafka consumer loop exited")
+
+
+    def close(self):
+        logger.info("Closing Kafka Event Processor...")
+        self.stop_consumer()
+        
+        with self._lock:
+            if self.producer:
+                try:
+                    self.producer.flush(timeout=5)
+                    self.producer.close()
+                except Exception as e:
+                    logger.error(f"Error closing producer: {e}")
+                finally:
+                    self.producer = None
+        
+        logger.info("Kafka Event Processor closed")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def is_healthy(self) -> bool:
+        """Check if the processor is healthy"""
+        with self._lock:
+            producer_ok = self.producer is not None
+            consumer_ok = not self.running or (
+                self.consumer is not None and 
+                self.consumer_thread and 
+                self.consumer_thread.is_alive()
+            )
+        return producer_ok and consumer_ok

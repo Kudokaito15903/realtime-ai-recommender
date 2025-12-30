@@ -205,26 +205,27 @@ async def search_products_by_text(
 async def create_product(product: ProductCreate):
     """Create a new product using the modern system"""
     try:
-        # Convert Pydantic model to dict
         product_data = product.dict()
-        product_id = product_data.get("id")
 
+            # Get the generated product ID from the store
+        product_id = product_store.store_product(product_data)
         if not product_id:
-            raise HTTPException(status_code=400, detail="Product ID is required")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to store product"
+        )
 
         # Publish event - event consumer will handle product storage and embedding generation
-        # This avoids duplicate processing (embedding generation and storage)
         if event_processor:
             try:
                 event_data = {
-                    "id": product_id,
-                    "product_id": product_id,  # Ensure product_id is set for consumer
+                    "product_id": product_id, 
                     "event_type": "create",
                     "timestamp": time.time(),
                     "data": product_data,
                 }
-                event_processor.publish_event(event_data)
-                logger.info(f"Published create event for product {product_id}")
+                event_id = event_processor.publish_event(event_data)
+                logger.info(f"Published create event {event_id} for product {product_id}")
             except Exception as e:
                 logger.error(f"Failed to publish event for product {product_id}: {e}")
                 raise HTTPException(
@@ -237,10 +238,9 @@ async def create_product(product: ProductCreate):
             )
 
         return {
-            "id": product_id,
+            "product_id": product_id,
             "status": "created",
             "message": "Product creation event published. Processing will happen asynchronously.",
-            "product": product_data,
         }
 
     except HTTPException:

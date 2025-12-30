@@ -61,31 +61,6 @@ async def get_product_recommendations(
             status_code=500, detail=f"Failed to get recommendations: {str(e)}"
         )
 
-
-@router.get("/category/{category}", response_model=RecommendationResponse)
-async def get_category_recommendations(
-    category: str = Path(..., description="The category to get recommendations for"),
-    limit: int = Query(10, description="Maximum number of recommendations to return"),
-):
-    """Get popular products in a specific category"""
-    try:
-        # Get popular products in the category
-        popular_products = product_recommender.get_popular_in_category(
-            category=category, limit=limit
-        )
-
-        # Create response
-        response = RecommendationResponse(recommendations=popular_products)
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error getting category recommendations: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get category recommendations: {str(e)}"
-        )
-
-
 @router.get("/trending", response_model=RecommendationResponse)
 async def get_trending_recommendations(
     limit: int = Query(10, description="Maximum number of recommendations to return"),

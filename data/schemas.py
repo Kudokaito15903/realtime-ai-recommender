@@ -74,14 +74,7 @@ class ProductBase(BaseModel):
 
 
 class ProductCreate(ProductBase):
-    """Model for creating a new product"""
-
-    id: Optional[str] = None
-
-    @validator("id", pre=True, always=True)
-    def default_id(cls, v):
-        """Generate a UUID if id is not provided"""
-        return v or str(uuid.uuid4())
+    pass
 
 
 class ProductUpdate(BaseModel):
@@ -110,7 +103,7 @@ class ProductUpdate(BaseModel):
 class Product(ProductBase):
     """Model for a product with metadata"""
 
-    id: str
+    product_id: str = Field(alias="_id")
     created_at: datetime
     updated_at: datetime
     embedding_updated_at: Optional[datetime] = None

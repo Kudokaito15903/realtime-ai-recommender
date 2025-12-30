@@ -173,13 +173,13 @@ class MongoDBProductStore(ProductStoreInterface):
             self.variants, [("product_id", ASCENDING), ("sku", ASCENDING)]
         )
 
-    def store_product(self, product_data: Dict[str, Any]) -> bool:
+    def store_product(self, product_data: Dict[str, Any]) -> Optional[str]:
         """Store or update a product in MongoDB (split into 2 collections: product and product_variants)"""
         try:
             # Validation
             if not product_data:
                 logger.error("Product data is empty")
-                return False
+                return None
 
             # Ensure product has valid ID (auto-generate if missing)
             product_id = _ensure_product_id(product_data)
@@ -285,21 +285,22 @@ class MongoDBProductStore(ProductStoreInterface):
             logger.debug(
                 f"Stored product {product_id} with {len(variants_data)} variants"
             )
-            return True
+            return str(product_id)
+
 
         except DuplicateKeyError as e:
             logger.error(
                 f"Duplicate key error storing product {product_data.get('id')}: {e}"
             )
-            return False
+            return None
         except PyMongoError as e:
             logger.error(f"MongoDB error storing product {product_data.get('id')}: {e}")
-            return False
+            return None
         except Exception as e:
             logger.error(
                 f"Unexpected error storing product {product_data.get('id')}: {e}"
             )
-            return False
+            return None
 
     def get_product(self, product_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a product by ID, reconstructing from 2 collections"""
@@ -511,7 +512,7 @@ class MongoDBUserBehavior(UserBehaviorInterface):
         try:
             self.db = _get_mongodb_db()
             self.interactions = self.db.user_interactions
-            self.products = self.db.products
+            self.products = self.db.product
 
             # Create indexes (non-blocking)
             self._create_indexes()
@@ -692,6 +693,10 @@ class MongoDBUserBehavior(UserBehaviorInterface):
                     product.pop("_id", None)
                 else:
                     product["id"] = product_id
+                
+                # Ensure product_id key exists for service layer compatibility
+                product["product_id"] = product["id"]
+                
                 product["view_count"] = view_count
                 popular.append(product)
 
@@ -700,10 +705,6 @@ class MongoDBUserBehavior(UserBehaviorInterface):
                     break
 
             return popular
-
-        except PyMongoError as e:
-            logger.error(f"Error getting popular products: {e}")
-            return []
         except Exception as e:
             logger.error(f"Unexpected error getting popular products: {e}")
             return []

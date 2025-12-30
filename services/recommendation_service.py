@@ -144,14 +144,38 @@ class RecommendationService:
             category=category, limit=limit
         )
 
-        return [
-            {
-                "product_id": p["product_id"],
+        results = []
+        for p in products:
+            pid = p.get("product_id")
+            if not pid:
+                continue
+
+            rec = {
+                "product_id": pid,
                 "score": 1.0,  # popularity score placeholder
                 "recommendation_type": "popular_in_category",
             }
-            for p in products
-        ]
+
+            # Enrich with variant info if product store is available
+            if self.product_store:
+                try:
+                    full_product = self.product_store.get_product(pid)
+                    if full_product and full_product.get("productVariants"):
+                        # Pick the first variant as the default recommendation
+                        # In a real scenario, logic could be more complex (e.g. best seller, in stock)
+                        v = full_product["productVariants"][0]
+                        rec["recommended_variant"] = {
+                            "sku": v.get("sku"),
+                            "variantName": v.get("variantName"),
+                            "color": v.get("color"),
+                            "price": v.get("price"),
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to fetch variants for {pid}: {e}")
+
+            results.append(rec)
+
+        return results
 
     # ---------------------------------------------------------
     # Personalized recommendations
@@ -369,11 +393,13 @@ class RecommendationService:
                     "avgRating": rating,
                     "price": price,
                     "price_distance": price_penalty,
-                    "final_score": final_score,
+                    "price_distance": price_penalty,
+                    "score": final_score,
+                    "recommendation_type": "recency_weighted",
                 }
             )
 
-        ranked.sort(key=lambda x: x["final_score"], reverse=True)
+        ranked.sort(key=lambda x: x["score"], reverse=True)
         return ranked[:result_limit]
 
     # ---------------------------------------------------------

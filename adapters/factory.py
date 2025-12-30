@@ -8,6 +8,7 @@ from .interfaces import (
     EventProcessorInterface,
     ProductStoreInterface,
     UserBehaviorInterface,
+    ContentStoreInterface,
 )
 
 
@@ -93,10 +94,24 @@ def create_user_behavior() -> UserBehaviorInterface:
     raise ValueError(f"Unknown user behavior store type: {behavior_type}")
 
 
+def create_content_store() -> ContentStoreInterface:
+    store_type = config.DATA_STORE_TYPE.lower()  # Reuse DATA_STORE_TYPE or add CONTENT_STORE_TYPE
+    logger.info(f"Creating content store: {store_type}")
+
+    if store_type == "supabase":
+        from adapters.database.supabase_content_adapter import get_supabase_content_store
+
+        return get_supabase_content_store()
+
+    # Add other implementations if needed
+    raise ValueError(f"Unknown content store type: {store_type}")
+
+
 _vector_store_instance: VectorStoreInterface | None = None
 _event_processor_instance: EventProcessorInterface | None = None
 _product_store_instance: ProductStoreInterface | None = None
 _user_behavior_instance: UserBehaviorInterface | None = None
+_content_store_instance: ContentStoreInterface | None = None
 
 
 def get_vector_store() -> VectorStoreInterface:
@@ -127,13 +142,21 @@ def get_user_behavior() -> UserBehaviorInterface:
     return _user_behavior_instance
 
 
+def get_content_store() -> ContentStoreInterface:
+    global _content_store_instance
+    if _content_store_instance is None:
+        _content_store_instance = create_content_store()
+    return _content_store_instance
+
+
 def reset_instances() -> None:
-    global _vector_store_instance, _event_processor_instance, _product_store_instance, _user_behavior_instance
+    global _vector_store_instance, _event_processor_instance, _product_store_instance, _user_behavior_instance, _content_store_instance
 
     _vector_store_instance = None
     _event_processor_instance = None
     _product_store_instance = None
     _user_behavior_instance = None
+    _content_store_instance = None
 
     logger.info("All adapter instances have been reset")
 

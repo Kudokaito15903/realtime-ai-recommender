@@ -252,6 +252,69 @@ async def create_product(product: ProductCreate):
         )
 
 
+@router.put("/{product_id}", response_model=Dict[str, Any])
+async def update_product(product_id: str, product: ProductCreate):
+    """Update an existing product and publish update event"""
+    if not PRODUCT_STORE_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Product store not available")
+
+    try:
+        product_data = product.dict()
+        product_data["id"] = product_id
+
+        ok = product_store.store_product(product_data)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to store product")
+
+        if event_processor:
+            try:
+                event_data = {
+                    "product_id": product_id,
+                    "event_type": "update",
+                    "timestamp": time.time(),
+                    "data": product_data,
+                }
+                event_processor.publish_event(event_data)
+            except Exception as e:
+                logger.error(f"Failed to publish update event: {e}")
+
+        return {"product_id": product_id, "status": "updated"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating product: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{product_id}", response_model=Dict[str, Any])
+async def delete_product(product_id: str):
+    """Delete a product and publish delete event"""
+    if not PRODUCT_STORE_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Product store not available")
+
+    try:
+        ok = product_store.delete_product(product_id)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to delete product")
+
+        if event_processor:
+            try:
+                event_processor.publish_event(
+                    {"product_id": product_id, "event_type": "delete", "timestamp": time.time()}
+                )
+            except Exception as e:
+                logger.error(f"Failed to publish delete event: {e}")
+
+        return {"product_id": product_id, "status": "deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting product: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/", response_model=List[Dict[str, Any]])
 async def list_products(
     category: Optional[str] = Query(None, description="Filter by category"),

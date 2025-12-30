@@ -172,3 +172,38 @@ class UserBehaviorInterface(ABC):
         Expected keys per item: user_id, product_id, count.
         """
         raise NotImplementedError
+
+
+class ContentStoreInterface(ABC):
+    """Abstract interface for content data storage (CMS)"""
+
+    @abstractmethod
+    def store_content(self, content_data: Dict[str, Any]) -> bool:
+        """Store or update content"""
+        pass
+
+    @abstractmethod
+    def get_content(self, content_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve content by ID"""
+        pass
+
+    @abstractmethod
+    def update_content(self, content_id: str, update_data: Dict[str, Any]) -> bool:
+        """Update content"""
+        pass
+
+    @abstractmethod
+    def delete_content(self, content_id: str) -> bool:
+        """Delete content"""
+        pass
+
+    @abstractmethod
+    def list_content(
+        self, 
+        category: Optional[str] = None, 
+        limit: int = 100, 
+        offset: int = 0,
+        status: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """List content with optional filtering"""
+        pass

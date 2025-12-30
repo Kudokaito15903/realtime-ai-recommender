@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 import math
 from datetime import datetime
 from loguru import logger
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from domain.embeddings.product_embeddings import get_embedding_model
 from adapters.factory import (
@@ -280,11 +281,16 @@ class ProductRecommender:
         )
         total_w = 0.0
 
+        # Gather viewed ids and fetch embeddings in parallel (IO-bound)
         viewed_ids = set()
-        for item in top_history:
-            pid = item["product_id"]
-            viewed_ids.add(pid)
-            emb = self.vector_store.get_product_embedding(pid)
+        pids = [item["product_id"] for item in top_history if item.get("product_id")]
+
+        def _fetch_embedding(pid: str):
+            emb = None
+            try:
+                emb = self.vector_store.get_product_embedding(pid)
+            except Exception:
+                emb = None
             if emb is None and self.product_store is not None:
                 try:
                     product = self.product_store.get_product(pid)
@@ -292,6 +298,27 @@ class ProductRecommender:
                         emb = self.embedding_model.get_product_embedding(product)
                 except Exception:
                     emb = None
+            return pid, emb
+
+        embeddings_map: Dict[str, Any] = {}
+        t_emb_start = time.time()
+        if pids:
+            max_workers = min(16, len(pids))
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {ex.submit(_fetch_embedding, pid): pid for pid in pids}
+                for fut in as_completed(futures):
+                    try:
+                        pid, emb = fut.result()
+                        if emb is not None:
+                            embeddings_map[pid] = emb
+                    except Exception:
+                        logger.exception("Embedding fetch failed for a pid")
+        logger.debug(f"Fetched {len(embeddings_map)} embeddings in {time.time()-t_emb_start:.3f}s")
+
+        for item in top_history:
+            pid = item["product_id"]
+            viewed_ids.add(pid)
+            emb = embeddings_map.get(pid)
             if emb is None:
                 continue
             accumulator += emb * item["weight"]
@@ -306,11 +333,13 @@ class ProductRecommender:
             user_vec /= norm
 
         # Vector search
+        t_vs_start = time.time()
         candidates = self.vector_store.find_similar_products(
             embedding=user_vec,
             limit=search_limit,
             min_score=similarity_threshold,
         )
+        logger.debug(f"Vector search returned {len(candidates) if candidates else 0} candidates in {time.time()-t_vs_start:.3f}s")
 
         if not candidates:
             return []

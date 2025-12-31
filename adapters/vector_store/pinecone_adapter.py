@@ -173,6 +173,16 @@ class PineconeVectorStore(VectorStoreInterface):
             logger.error(f"Error deleting embedding for product {product_id}: {e}")
             return False
 
+    def clear_index(self) -> bool:
+        """Delete all vectors from the index"""
+        try:
+            self.index.delete(delete_all=True)
+            logger.info(f"Cleared all vectors from index: {self.index_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing index {self.index_name}: {e}")
+            return False
+
     def get_index_stats(self) -> Dict[str, Any]:
         """Get statistics about the Pinecone index"""
         try:

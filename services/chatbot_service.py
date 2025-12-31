@@ -6,10 +6,11 @@ from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 from urllib import request as urlrequest
 from urllib.error import HTTPError
+from openai import OpenAI
 
 from adapters.factory import get_vector_store, get_product_store, get_content_store, get_user_behavior
 from domain.embeddings.product_embeddings import get_embedding_model
-from config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_URL
+import config
 
 
 class ChatbotService:
@@ -19,6 +20,10 @@ class ChatbotService:
         self.product_store = get_product_store()
         self.content_store = get_content_store()
         self.user_behavior = get_user_behavior()
+        self.client = OpenAI(
+            base_url=config.OPENAI_API_URL,
+            api_key=config.OPENAI_API_KEY,
+        )
 
     def retrieve(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Retrieve top-K documents from the vector store for the query (products and content)."""
@@ -283,52 +288,31 @@ class ChatbotService:
         return prompt
 
     def _call_openai_chat(self, prompt: str) -> str:
-        """Call OpenAI Chat completions API via simple HTTP request (if configured).
-        Falls back to a simple heuristic response when not available.
         """
-        key = os.getenv("OPENAI_API_KEY") or OPENAI_API_KEY
-        model = os.getenv("OPENAI_MODEL") or OPENAI_MODEL or "gpt-4o-mini"
-        api_url = os.getenv("OPENAI_API_URL") or OPENAI_API_URL or "https://api.openai.com/v1/chat/completions"
+        Call OpenRouter Chat Completions API via HTTP request.
+        """
 
-        if not key:
-            logger.warning("OPENAI_API_KEY not set — returning fallback answer")
-            return "Tôi tìm thấy một số sản phẩm liên quan nhưng không thể gọi LLM. Vui lòng liên hệ CSKH: support@example.com"
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-        }
-
-        body = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt},
-            ],
-            "max_tokens": 512,
-            "temperature": 0.2,
-        }
-
-        req = urlrequest.Request(api_url, data=json.dumps(body).encode("utf-8"), headers=headers)
         try:
-            with urlrequest.urlopen(req, timeout=15) as resp:
-                raw = resp.read().decode("utf-8")
-                data = json.loads(raw)
-                # Try to extract assistant text
-                if "choices" in data and len(data["choices"]) > 0:
-                    delta = data["choices"][0].get("message", {}).get("content")
-                    if delta:
-                        return delta
-                # Fallback older schema
-                if "choices" in data and len(data["choices"]) > 0 and "text" in data["choices"][0]:
-                    return data["choices"][0]["text"]
+            completion = self.client.chat.completions.create(
+                model= config.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are an e-commerce recommendation assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=512,
+                temperature=0.2,
+                extra_headers={
+                    "HTTP-Referer": "http://localhost:8000",
+                    "X-Title": "realtime-ai-recommender",
+                }
+            )
 
-        except HTTPError as e:
-            logger.error(f"OpenAI HTTP error: {e}")
+            return completion.choices[0].message.content
+
         except Exception as e:
-            logger.exception(f"Error calling OpenAI: {e}")
-
-        return "Rất tiếc, hiện tại tôi không thể trả lời do lỗi hệ thống. Vui lòng thử lại sau."
+            logger.exception("LLM call failed")
+            return "Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại sau."
 
     def _detect_intent(self, query: str) -> str:
         """
@@ -496,21 +480,54 @@ class ChatbotService:
             ctx.get("metadata", {}).get("category", "").lower() in ["policy", "chính sách", "cskh"]
         ]
         
+        # Helper to check for CSKH keywords
+        cskh_keywords = ['hỗ trợ', 'tư vấn', 'liên hệ', 'hotline', 'email', 'cskh', 'customer service', 'help', 'giúp đỡ']
+        has_cskh = any(kw in query.lower() for kw in cskh_keywords)
+
         if not policy_contexts:
             # Fallback: search content store directly
             if self.content_store:
                 try:
-                    all_content = self.content_store.list_content(category="policy", limit=10)
-                    for content in all_content:
-                        policy_contexts.append({
-                            "id": content.get("id"),
-                            "type": "content",
-                            "data": content,
-                            "score": 0.5,
-                        })
+                    # Fetch broader categories
+                    categories_to_fetch = ["policy"]
+                    if has_cskh:
+                        categories_to_fetch.append("cskh")
+
+                    for cat in categories_to_fetch:
+                        all_content = self.content_store.list_content(category=cat, limit=5)
+                        for content in all_content:
+                            policy_contexts.append({
+                                "id": content.get("id"),
+                                "type": "content",
+                                "data": content,
+                                "score": 0.5,
+                            })
                 except Exception as e:
                     logger.warning(f"Error fetching policy content: {e}")
         
+        # If query contains explicit CSKH intent but we didn't get any CSKH content in vector results,
+        # explicitly fetch it.
+        if has_cskh and self.content_store:
+             # Check if we already have cskh content
+            has_cskh_context = any(
+                ctx.get("data", {}).get("category") == "cskh" or 
+                ctx.get("metadata", {}).get("category") == "cskh" 
+                for ctx in policy_contexts
+            )
+            
+            if not has_cskh_context:
+                try:
+                    cskh_content = self.content_store.list_content(category="cskh", limit=3)
+                    for content in cskh_content:
+                         policy_contexts.append({
+                            "id": content.get("id"),
+                            "type": "content",
+                            "data": content,
+                            "score": 0.6, # Artificial boost
+                        })
+                except Exception as e:
+                    logger.warning(f"Error fetching CSKH content: {e}")
+
         if not policy_contexts:
             return "Xin lỗi, tôi không tìm thấy thông tin chính sách phù hợp. Vui lòng liên hệ CSKH để được hỗ trợ.", []
         

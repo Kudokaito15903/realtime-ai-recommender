@@ -60,6 +60,11 @@ class EventProcessorInterface(ABC):
         pass
 
     @abstractmethod
+    def publish_event(self, event_data: Dict[str, Any]) -> Optional[str]:
+        """Publish a generic event"""
+        pass
+
+    @abstractmethod
     def start_consumer(self, consumer_id: Optional[str] = None) -> None:
         """Start consuming events"""
         pass
@@ -70,8 +75,8 @@ class EventProcessorInterface(ABC):
         pass
 
     @abstractmethod
-    def set_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
-        """Set the function to handle incoming events"""
+    def add_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Add a function to handle incoming events"""
         pass
 
 

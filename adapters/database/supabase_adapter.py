@@ -27,7 +27,7 @@ class SupabaseEventProcessor(EventProcessorInterface):
         self.url = url
         self.key = key
         self.client: Client = create_client(url, key)
-        self.event_handler: Optional[Callable[[Dict[str, Any]], None]] = None
+        self.event_handlers: List[Callable[[Dict[str, Any]], None]] = []
         self.running = False
         self.consumer_thread = None
 
@@ -46,6 +46,16 @@ class SupabaseEventProcessor(EventProcessorInterface):
     def publish_product_deleted(self, product_id: str) -> Optional[str]:
         """Publish a product deleted event to Supabase"""
         return self._publish_event("delete", product_id, {"id": product_id})
+
+    def publish_event(self, event_data: Dict[str, Any]) -> Optional[str]:
+        """Publish a generic event"""
+        event_type = event_data.get("event_type", "unknown")
+        # Use content_id or product_id or just "unknown"
+        entity_id = event_data.get("content_id") or event_data.get("product_id") or "unknown"
+        # Extract actual data payload if wrapped
+        real_data = event_data.get("data", event_data)
+        
+        return self._publish_event(event_type, entity_id, real_data)
 
     def _publish_event(
         self, event_type: str, product_id: str, data: Dict[str, Any]
@@ -105,9 +115,9 @@ class SupabaseEventProcessor(EventProcessorInterface):
             self.consumer_thread.join(timeout=5.0)
         logger.info("Stopped Supabase event consumer")
 
-    def set_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
-        """Set the function to handle incoming events"""
-        self.event_handler = handler
+    def add_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Add a function to handle incoming events"""
+        self.event_handlers.append(handler)
 
     def _consume_loop(self, consumer_id: Optional[str]) -> None:
         """Main loop for consuming events from Supabase"""
@@ -132,17 +142,20 @@ class SupabaseEventProcessor(EventProcessorInterface):
                     # Process each event
                     for event in events:
                         try:
-                            if self.event_handler:
-                                # Parse the event data
-                                event_data = {
-                                    "event_type": event["event_type"],
-                                    "product_id": event["product_id"],
-                                    "data": json.loads(event["data"]),
-                                    "timestamp": event["timestamp"],
-                                }
+                            # Parse the event data
+                            event_data = {
+                                "event_type": event["event_type"],
+                                "product_id": event["product_id"],
+                                "data": json.loads(event["data"]),
+                                "timestamp": event["timestamp"],
+                            }
 
-                                # Call the event handler
-                                self.event_handler(event_data)
+                            # Call all event handlers
+                            for handler in self.event_handlers:
+                                try:
+                                    handler(event_data)
+                                except Exception as e:
+                                    logger.error(f"Error in event handler: {e}")
 
                             # Mark event as processed
                             self.client.table("product_events").update(
@@ -240,12 +253,12 @@ class SupabaseProductStore(ProductStoreInterface):
                 self.client.table("products")
                 .select("*")
                 .eq("product_id", product_id)
-                .single()
+                .limit(1)
                 .execute()
             )
 
-            if result.data:
-                product = result.data
+            if result.data and len(result.data) > 0:
+                product = result.data[0]
                 # Merge metadata back into the main product dict
                 metadata = json.loads(product.get("metadata", "{}"))
                 return {

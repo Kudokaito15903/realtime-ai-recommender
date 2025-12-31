@@ -103,6 +103,11 @@ def create_content_store() -> ContentStoreInterface:
 
         return get_supabase_content_store()
 
+    if store_type in ("postgres", "postgresql"):
+        from adapters.database.postgres_adapter import get_postgres_content_store
+
+        return get_postgres_content_store()
+
     # Add other implementations if needed
     raise ValueError(f"Unknown content store type: {store_type}")
 

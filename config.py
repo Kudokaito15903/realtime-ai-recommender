@@ -160,6 +160,10 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
+#Chatbot 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", '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')
+OPENAI_MODEL= os.getenv("OPENAI_MODEL", 'google/gemma-3-27b-it:free')
+OPENAI_API_URL = os.getenv("OPENAI_API_URL", 'https://openrouter.ai/api/v1')
 
 class Config:
     """Configuration class for easy access to settings."""
@@ -200,6 +204,11 @@ class Config:
         # Logging
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
+
+        # Chatbot Configuration
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
+        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL) 
+        self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", OPENAI_API_URL)
 
     def get_redis_url(self) -> str:
         """Get Redis connection URL."""

@@ -18,6 +18,7 @@ from adapters.interfaces import (
     EventProcessorInterface,
     ProductStoreInterface,
     UserBehaviorInterface,
+    ContentStoreInterface,
 )
 
 
@@ -90,6 +91,20 @@ def _ensure_tables():
             last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         """,
+
+        # Content table
+        """
+        CREATE TABLE IF NOT EXISTS content (
+            content_id VARCHAR(255) PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '',
+            tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+            status VARCHAR(32) NOT NULL DEFAULT 'published',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        """,
     ]
 
     # Additional schema evolution for existing databases
@@ -121,7 +136,7 @@ class PostgresEventProcessor(EventProcessorInterface):
 
     def __init__(self):
         _ensure_tables()
-        self.event_handler: Optional[Callable[[Dict[str, Any]], None]] = None
+        self.event_handlers: List[Callable[[Dict[str, Any]], None]] = []
         self.running = False
         self.consumer_thread: Optional[threading.Thread] = None
         logger.info("Postgres Event Processor initialized")
@@ -136,6 +151,14 @@ class PostgresEventProcessor(EventProcessorInterface):
 
     def publish_product_deleted(self, product_id: str) -> Optional[str]:
         return self._publish_event("delete", product_id, {"id": product_id})
+
+    def publish_event(self, event_data: Dict[str, Any]) -> Optional[str]:
+        """Publish a generic event"""
+        event_type = event_data.get("event_type", "unknown")
+        entity_id = event_data.get("content_id") or event_data.get("product_id") or "unknown"
+        real_data = event_data.get("data", event_data)
+        
+        return self._publish_event(event_type, entity_id, real_data)
 
     def _publish_event(
         self, event_type: str, product_id: str, data: Dict[str, Any]
@@ -196,8 +219,8 @@ class PostgresEventProcessor(EventProcessorInterface):
             self.consumer_thread.join(timeout=5.0)
         logger.info("Stopped Postgres event consumer")
 
-    def set_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
-        self.event_handler = handler
+    def add_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
+        self.event_handlers.append(handler)
 
     def _consume_loop(self, consumer_id: Optional[str]) -> None:
         try:
@@ -224,14 +247,17 @@ class PostgresEventProcessor(EventProcessorInterface):
 
                                 for event in events:
                                     try:
-                                        if self.event_handler:
-                                            event_data = {
-                                                "event_type": event["event_type"],
-                                                "product_id": event["product_id"],
-                                                "data": event["data"],
-                                                "timestamp": event["timestamp"],
-                                            }
-                                            self.event_handler(event_data)
+                                        event_data = {
+                                            "event_type": event["event_type"],
+                                            "product_id": event["product_id"],
+                                            "data": event["data"],
+                                            "timestamp": event["timestamp"],
+                                        }
+                                        for handler in self.event_handlers:
+                                            try:
+                                                handler(event_data)
+                                            except Exception as e:
+                                                logger.error(f"Error in handler: {e}")
 
                                         cur.execute(
                                             """
@@ -741,6 +767,220 @@ class PostgresUserBehavior(UserBehaviorInterface):
             return None
 
 
+
+class PostgresContentStore(ContentStoreInterface):
+    """PostgreSQL content storage implementation."""
+
+    def __init__(self):
+        _ensure_tables()
+        logger.info("Postgres Content Store initialized")
+
+    def store_content(self, content_data: Dict[str, Any]) -> bool:
+        try:
+            content = {
+                "content_id": content_data["id"],
+                "title": content_data.get("title", ""),
+                "content": content_data.get("content", ""),
+                "category": content_data.get("category", ""),
+                "tags": json.dumps(content_data.get("tags", [])),
+                "status": content_data.get("status", "published"),
+                "created_at": datetime.utcnow() if "created_at" not in content_data else datetime.fromtimestamp(content_data["created_at"]),
+                "updated_at": datetime.utcnow() if "updated_at" not in content_data else datetime.fromtimestamp(content_data["updated_at"]),
+            }
+
+            conn = _get_pg_conn()
+            try:
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO content (
+                                content_id, title, content, category, tags, status, created_at, updated_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                            ON CONFLICT (content_id) DO UPDATE SET
+                                title = EXCLUDED.title,
+                                content = EXCLUDED.content,
+                                category = EXCLUDED.category,
+                                tags = EXCLUDED.tags,
+                                status = EXCLUDED.status,
+                                updated_at = EXCLUDED.updated_at;
+                            """,
+                            (
+                                content["content_id"],
+                                content["title"],
+                                content["content"],
+                                content["category"],
+                                content["tags"],
+                                content["status"],
+                                content["created_at"],
+                                content["updated_at"],
+                            ),
+                        )
+                logger.debug(f"Stored content {content_data['id']} in Postgres")
+                return True
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error storing content {content_data.get('id')}: {e}")
+            return False
+
+    def get_content(self, content_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            conn = _get_pg_conn()
+            try:
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT *
+                            FROM content
+                            WHERE content_id = %s;
+                            """,
+                            (content_id,),
+                        )
+                        row = cur.fetchone()
+                        if not row:
+                            return None
+
+                        tags = row.get("tags")
+                        if isinstance(tags, str):
+                            tags = json.loads(tags)
+                        
+                        return {
+                            "id": row["content_id"],
+                            "title": row["title"],
+                            "content": row["content"],
+                            "category": row["category"],
+                            "tags": tags or [],
+                            "status": row["status"],
+                            "created_at": row.get("created_at"),
+                            "updated_at": row.get("updated_at"),
+                        }
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error retrieving content {content_id}: {e}")
+            return None
+
+    def update_content(self, content_id: str, update_data: Dict[str, Any]) -> bool:
+        try:
+            fields = []
+            values = []
+            
+            if "title" in update_data:
+                fields.append("title = %s")
+                values.append(update_data["title"])
+            if "content" in update_data:
+                fields.append("content = %s")
+                values.append(update_data["content"])
+            if "category" in update_data:
+                fields.append("category = %s")
+                values.append(update_data["category"])
+            if "tags" in update_data:
+                fields.append("tags = %s::jsonb")
+                values.append(json.dumps(update_data["tags"]))
+            if "status" in update_data:
+                fields.append("status = %s")
+                values.append(update_data["status"])
+            
+            fields.append("updated_at = %s")
+            if "updated_at" in update_data:
+                values.append(datetime.fromtimestamp(update_data["updated_at"]))
+            else:
+                values.append(datetime.utcnow())
+                
+            if not fields:
+                return True
+                
+            values.append(content_id)
+            
+            query = f"UPDATE content SET {', '.join(fields)} WHERE content_id = %s"
+            
+            conn = _get_pg_conn()
+            try:
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(query, tuple(values))
+                        return cur.rowcount > 0
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error updating content {content_id}: {e}")
+            return False
+
+    def delete_content(self, content_id: str) -> bool:
+        try:
+            conn = _get_pg_conn()
+            try:
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "DELETE FROM content WHERE content_id = %s;",
+                            (content_id,),
+                        )
+                logger.debug(f"Deleted content {content_id} from Postgres")
+                return True
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error deleting content {content_id}: {e}")
+            return False
+
+    def list_content(
+        self, 
+        category: Optional[str] = None, 
+        limit: int = 100, 
+        offset: int = 0,
+        status: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        try:
+            conn = _get_pg_conn()
+            try:
+                with conn:
+                    with conn.cursor() as cur:
+                        query = "SELECT * FROM content WHERE 1=1"
+                        params = []
+                        
+                        if category:
+                            query += " AND category = %s"
+                            params.append(category)
+                            
+                        if status:
+                            query += " AND status = %s"
+                            params.append(status)
+                            
+                        query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+                        params.append(limit)
+                        params.append(offset)
+                        
+                        cur.execute(query, tuple(params))
+                        rows = cur.fetchall()
+                        
+                results = []
+                for row in rows:
+                    tags = row.get("tags")
+                    if isinstance(tags, str):
+                        tags = json.loads(tags)
+                        
+                    results.append({
+                        "id": row["content_id"],
+                        "title": row["title"],
+                        "content": row["content"],
+                        "category": row["category"],
+                        "tags": tags or [],
+                        "status": row["status"],
+                        "created_at": row.get("created_at"),
+                        "updated_at": row.get("updated_at"),
+                    })
+                return results
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error listing content: {e}")
+            return []
+
+
 # Factory functions
 def get_postgres_event_processor() -> PostgresEventProcessor:
     return PostgresEventProcessor()
@@ -752,3 +992,7 @@ def get_postgres_product_store() -> PostgresProductStore:
 
 def get_postgres_user_behavior() -> PostgresUserBehavior:
     return PostgresUserBehavior()
+
+
+def get_postgres_content_store() -> PostgresContentStore:
+    return PostgresContentStore()

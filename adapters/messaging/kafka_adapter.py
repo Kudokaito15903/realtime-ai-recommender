@@ -24,7 +24,7 @@ class KafkaEventProcessor:
         self.consumer = None
         self.running = False  # ✅ FIX: Changed from True to False
         self.consumer_thread = None
-        self.event_handler = None
+        self.event_handlers: List[Callable[[Dict[str, Any]], None]] = []
         
         # ✅ FIX: Add thread lock for safety
         self._lock = threading.Lock()
@@ -139,10 +139,10 @@ class KafkaEventProcessor:
 
         logger.info("Stopped Kafka consumer")
 
-    def set_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
-        """Set the callback handler for processing events"""
+    def add_event_handler(self, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Add the callback handler for processing events"""
         with self._lock:
-            self.event_handler = handler
+            self.event_handlers.append(handler)
 
     def _consume_loop(self, consumer_id: Optional[str]) -> None:
         try:
@@ -185,10 +185,13 @@ class KafkaEventProcessor:
 
                             # ✅ FIX: Thread-safe handler access
                             with self._lock:
-                                handler = self.event_handler
+                                handlers = list(self.event_handlers)
 
-                            if handler:
-                                handler(event_data)
+                            for handler in handlers:
+                                try:
+                                    handler(event_data)
+                                except Exception as e:
+                                    logger.error(f"Error in Kafka handler: {e}")
 
                         except Exception as e:
                             logger.error(f"Error processing Kafka message: {e}")

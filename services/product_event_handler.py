@@ -57,7 +57,7 @@ class ProductEventHandler:
             return
         # register handler and start consumer
         try:
-            self.event_processor.set_event_handler(self._handle_event)
+            self.event_processor.add_event_handler(self._handle_event)
             self.event_processor.start_consumer()
             self._started = True
             logger.info("ProductEventHandler started and listening to events")

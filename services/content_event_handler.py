@@ -19,7 +19,7 @@ class ContentEventHandler:
     def _handle_event(self, event: Dict[str, Any]):
         try:
             event_type = event.get("event_type") or event.get("type")
-            content_id = event.get("content_id") or event.get("id") or (event.get("data") or {}).get("id")
+            content_id = event.get("content_id") or event.get("id") or event.get("product_id") or (event.get("data") or {}).get("id")
             logger.debug(f"Content event received: {event_type} - {content_id}")
 
             if not content_id:
@@ -64,7 +64,7 @@ class ContentEventHandler:
         if self._started:
             return
         try:
-            self.event_processor.set_event_handler(self._handle_event)
+            self.event_processor.add_event_handler(self._handle_event)
             self.event_processor.start_consumer(consumer_id="content-handler")
             self._started = True
             logger.info("ContentEventHandler started and listening to events")

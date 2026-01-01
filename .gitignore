@@ -91,3 +91,6 @@ gradio_*.py
 
 # Windows device artifacts
 nul
+
+#data 
+data/raw/

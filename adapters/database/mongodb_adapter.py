@@ -542,12 +542,16 @@ class MongoDBUserBehavior(UserBehaviorInterface):
         # Optional: TTL index to auto-delete old interactions (e.g., after 90 days)
         # _ensure_index(self.interactions, "timestamp", expireAfterSeconds=60*60*24*90)
 
+        # Index for session-based queries
+        _ensure_index(self.interactions, "session_id")
+
     def _track_interaction(
         self,
         user_id: str,
         product_id: str,
         interaction_type: str,
         variant_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> bool:
         """Internal method to track any interaction"""
         try:
@@ -567,11 +571,15 @@ class MongoDBUserBehavior(UserBehaviorInterface):
                 interaction["variant_id"] = str(variant_id)
                 interaction["sku"] = str(variant_id)  # Alias for compatibility
 
+            # Add session_id if provided
+            if session_id:
+                interaction["session_id"] = str(session_id)
+
             self.interactions.insert_one(interaction)
 
             logger.debug(
                 f"Tracked {interaction_type}: user={user_id}, "
-                f"product={product_id}, variant={variant_id or 'N/A'}"
+                f"product={product_id}, variant={variant_id or 'N/A'}, session={session_id or 'N/A'}"
             )
             return True
 
@@ -583,28 +591,52 @@ class MongoDBUserBehavior(UserBehaviorInterface):
             return False
 
     def track_view(
-        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+        self,
+        user_id: str,
+        product_id: str,
+        variant_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> bool:
         """Track a product view by user"""
-        return self._track_interaction(user_id, product_id, "view", variant_id)
+        return self._track_interaction(
+            user_id, product_id, "view", variant_id, session_id
+        )
 
     def track_click(
-        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+        self,
+        user_id: str,
+        product_id: str,
+        variant_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> bool:
         """Track a product click by user"""
-        return self._track_interaction(user_id, product_id, "click", variant_id)
+        return self._track_interaction(
+            user_id, product_id, "click", variant_id, session_id
+        )
 
     def track_add_to_cart(
-        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+        self,
+        user_id: str,
+        product_id: str,
+        variant_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> bool:
         """Track a product add-to-cart by user"""
-        return self._track_interaction(user_id, product_id, "add_to_cart", variant_id)
+        return self._track_interaction(
+            user_id, product_id, "add_to_cart", variant_id, session_id
+        )
 
     def track_purchase(
-        self, user_id: str, product_id: str, variant_id: Optional[str] = None
+        self,
+        user_id: str,
+        product_id: str,
+        variant_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> bool:
         """Track a product purchase by user"""
-        return self._track_interaction(user_id, product_id, "purchase", variant_id)
+        return self._track_interaction(
+            user_id, product_id, "purchase", variant_id, session_id
+        )
 
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Get user's recent product interactions"""
@@ -631,11 +663,39 @@ class MongoDBUserBehavior(UserBehaviorInterface):
 
             return history
 
-        except PyMongoError as e:
-            logger.error(f"Error getting user history for {user_id}: {e}")
-            return []
         except Exception as e:
             logger.error(f"Unexpected error getting user history for {user_id}: {e}")
+            return []
+
+    def get_session_interactions(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get interactions for a specific session"""
+        try:
+            if not session_id:
+                return []
+
+            cursor = (
+                self.interactions.find({"session_id": str(session_id)})
+                .sort("timestamp", ASCENDING)
+            )
+
+            interactions = []
+            for doc in cursor:
+                interaction = dict(doc)
+                interaction.pop("_id", None)
+                
+                # Convert timestamp to ISO format
+                if isinstance(interaction.get("timestamp"), datetime):
+                    interaction["timestamp"] = interaction["timestamp"].isoformat()
+                    
+                interactions.append(interaction)
+
+            return interactions
+
+        except PyMongoError as e:
+            logger.error(f"Error getting session interactions for {session_id}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error getting session interactions for {session_id}: {e}")
             return []
 
     def get_popular_products(

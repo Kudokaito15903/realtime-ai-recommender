@@ -13,9 +13,9 @@ from domain.recommenders.als_recommender import (
 )
 
 from domain.recommenders.session_recommender import (
-    TransitionStats,
-    build_transition_stats,
-    recommend_from_history,
+    SessionTransitionStats,
+    build_session_transitions,
+    recommend_next_items,
 )
 
 
@@ -26,7 +26,8 @@ __all__ = [
     "save_als_model",
     "train_implicit_als",
     "recommend_for_user",
-    "TransitionStats",
-    "build_transition_stats",
-    "recommend_from_history",
+    "SessionTransitionStats",
+    "build_session_transitions",
+    "recommend_next_items",
 ]
+

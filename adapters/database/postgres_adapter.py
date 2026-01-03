@@ -79,6 +79,7 @@ def _ensure_tables():
             user_id VARCHAR(255) NOT NULL,
             product_id VARCHAR(255) NOT NULL,
             event_type VARCHAR(32) NOT NULL DEFAULT 'view',
+            session_id VARCHAR(255),
             timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         """,
@@ -97,7 +98,11 @@ def _ensure_tables():
         """
         ALTER TABLE user_views
         ADD COLUMN IF NOT EXISTS event_type VARCHAR(32) NOT NULL DEFAULT 'view';
+        """,
         """
+        ALTER TABLE user_views
+        ADD COLUMN IF NOT EXISTS session_id VARCHAR(255);
+        """,
     ]
 
     try:
@@ -506,7 +511,9 @@ class PostgresUserBehavior(UserBehaviorInterface):
         _ensure_tables()
         logger.info("Postgres User Behavior initialized")
 
-    def _insert_event(self, user_id: str, product_id: str, event_type: str) -> bool:
+    def _insert_event(
+        self, user_id: str, product_id: str, event_type: str, session_id: Optional[str] = None
+    ) -> bool:
         try:
             conn = _get_pg_conn()
             try:
@@ -514,15 +521,15 @@ class PostgresUserBehavior(UserBehaviorInterface):
                     with conn.cursor() as cur:
                         cur.execute(
                             """
-                            INSERT INTO user_views (user_id, product_id, event_type, timestamp)
-                            VALUES (%s, %s, %s, %s);
+                            INSERT INTO user_views (user_id, product_id, event_type, session_id, timestamp)
+                            VALUES (%s, %s, %s, %s, %s);
                             """,
-                            (user_id, product_id, event_type, datetime.utcnow()),
+                            (user_id, product_id, event_type, session_id, datetime.utcnow()),
                         )
                 # Update category popularity
                 self._update_category_popularity(product_id)
                 logger.debug(
-                    f"Tracked {event_type}: user {user_id} -> product {product_id}"
+                    f"Tracked {event_type}: user {user_id} -> product {product_id} (session={session_id})"
                 )
                 return True
             finally:
@@ -531,17 +538,17 @@ class PostgresUserBehavior(UserBehaviorInterface):
             logger.error(f"Error tracking {event_type}: {e}")
             return False
 
-    def track_view(self, user_id: str, product_id: str) -> bool:
-        return self._insert_event(user_id, product_id, "view")
+    def track_view(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+        return self._insert_event(user_id, product_id, "view", session_id)
 
-    def track_click(self, user_id: str, product_id: str) -> bool:
-        return self._insert_event(user_id, product_id, "click")
+    def track_click(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+        return self._insert_event(user_id, product_id, "click", session_id)
 
-    def track_add_to_cart(self, user_id: str, product_id: str) -> bool:
-        return self._insert_event(user_id, product_id, "add_to_cart")
+    def track_add_to_cart(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+        return self._insert_event(user_id, product_id, "add_to_cart", session_id)
 
-    def track_purchase(self, user_id: str, product_id: str) -> bool:
-        return self._insert_event(user_id, product_id, "purchase")
+    def track_purchase(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+        return self._insert_event(user_id, product_id, "purchase", session_id)
 
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         try:
@@ -640,7 +647,7 @@ class PostgresUserBehavior(UserBehaviorInterface):
                     with conn.cursor() as cur:
                         cur.execute(
                             """
-                            SELECT user_id, product_id, event_type, timestamp
+                            SELECT user_id, product_id, event_type, session_id, timestamp
                             FROM user_views
                             ORDER BY timestamp DESC
                             LIMIT %s OFFSET %s;
@@ -653,6 +660,33 @@ class PostgresUserBehavior(UserBehaviorInterface):
                 conn.close()
         except Exception as e:
             logger.error(f"Error getting recent interactions: {e}")
+            return []
+
+    def get_session_interactions(
+        self, session_id: str, limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Get all interactions for a specific session, ordered by time."""
+        try:
+            conn = _get_pg_conn()
+            try:
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT user_id, product_id, event_type, session_id, timestamp
+                            FROM user_views
+                            WHERE session_id = %s
+                            ORDER BY timestamp ASC
+                            LIMIT %s;
+                            """,
+                            (session_id, limit),
+                        )
+                        rows = cur.fetchall()
+                return list(rows) if rows else []
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error getting session interactions: {e}")
             return []
 
     def get_interaction_counts(self, limit: int = 50000) -> List[Dict[str, Any]]:

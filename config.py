@@ -143,8 +143,11 @@ SESSION_TRANSITIONS_REFRESH_SECONDS = int(
 SESSION_RECENT_K = int(os.getenv("SESSION_RECENT_K", 5))
 # Enhanced session recommendation parameters
 SESSION_TIME_DECAY_HALF_LIFE_DAYS = float(
-    os.getenv("SESSION_TIME_DECAY_HALF_LIFE_DAYS", 30.0)
-)  # 30 days
+    os.getenv("SESSION_TIME_DECAY_HALF_LIFE_DAYS", 7.0)
+)  # 7 days (was 30) - faster decay for trends
+SESSION_HISTORY_DECAY = float(
+    os.getenv("SESSION_HISTORY_DECAY", 0.7)
+)  # Weight decay for position in history (recency)
 SESSION_DIVERSITY_LAMBDA = float(
     os.getenv("SESSION_DIVERSITY_LAMBDA", 0.3)
 )  # Diversity penalty weight

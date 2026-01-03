@@ -40,9 +40,9 @@ from domain.recommenders.als_recommender import (
 )
 from domain.recommenders.session_recommender import (
     TransitionStats,
-    build_transition_stats,
-    recommend_from_history as session_recommend_from_history,
-)
+    build_session_transitions,
+    recommend_next_items,
+)       
 
 
 class RecommendationService:
@@ -424,35 +424,45 @@ class RecommendationService:
     # Session-based recommendations (recent interactions)
     # ---------------------------------------------------------
     def _ensure_session_stats(self) -> None:
+
+        now = time.time()
+        # Fast-path TTL check
         with self._session_lock:
-            # TTL
             if (
                 self._session_stats is not None
-                and (time.time() - self._session_loaded_at)
+                and (now - self._session_loaded_at)
                 <= SESSION_TRANSITIONS_REFRESH_SECONDS
             ):
                 return
 
         if not hasattr(self.user_behavior, "get_recent_interactions"):
             logger.warning(
-                "Behavior store does not support recent interactions; session recommender unavailable"
+                "Behavior store does not support recent interactions; "
+                "session-based recommender unavailable"
             )
             return
 
         interactions = self.user_behavior.get_recent_interactions(
-            limit=SESSION_TRANSITIONS_LIMIT, offset=0
+            limit=SESSION_TRANSITIONS_LIMIT,
+            offset=0,
         )
         if not interactions:
+            logger.warning("No recent interactions available for session transitions")
             return
 
-        stats = build_transition_stats(
-            interactions,
-            session_gap_seconds=SESSION_GAP_SECONDS,
-            product_store=self.product_store,
-        )
+        try:
+            stats = build_session_transitions(
+                interactions=interactions,
+                session_gap_seconds=SESSION_GAP_SECONDS,
+                product_store=self.product_store,
+            )
+        except Exception:
+            logger.exception("Failed to build session transition statistics")
+            return
+
         with self._session_lock:
             self._session_stats = stats
-            self._session_loaded_at = time.time()
+            self._session_loaded_at = now
 
     def get_session_based_recommendations(
         self,
@@ -461,45 +471,66 @@ class RecommendationService:
         recent_k: int = SESSION_RECENT_K,
     ) -> List[Dict[str, Any]]:
         """
-        Recommend based on the user's most recent interactions in the current session.
-        This uses global item->next-item transition statistics + recency weighting.
+        Recommend next items based purely on the user's current session context.
+
+        Logic:
+        1. Get recent interactions (session context)
+        2. Use item -> next-item transitions
+        3. Apply recency + time decay
+        4. Fallback to popularity
         """
-        if not user_id:
+        if not user_id or limit <= 0:
             return []
 
-        history = self.user_behavior.get_user_history(user_id, limit=max(2, recent_k))
+        # Step 1: fetch recent session interactions
+        history = self.user_behavior.get_user_history(
+            user_id=user_id,
+            limit=max(2, recent_k),
+        )
         if not history:
             return self.get_popular_in_category(category=None, limit=limit)
 
-        recent_ids = [
+        # Extract recent product_ids (most recent LAST)
+        recent_ids: List[str] = [
             str(x.get("product_id")) for x in history if x.get("product_id") is not None
         ][:recent_k]
-        if not recent_ids:
+
+        if len(recent_ids) < 1:
             return self.get_popular_in_category(category=None, limit=limit)
 
+        # Step 2: ensure session stats
         self._ensure_session_stats()
         with self._session_lock:
             stats = self._session_stats
 
         if stats is None:
-            # fallback: vector-based from last viewed item
-            return self.get_similar_products(product_id=recent_ids[0], limit=limit)
+            # Session recommender unavailable → popularity fallback
+            return self.get_popular_in_category(category=None, limit=limit)
 
-        ranked = session_recommend_from_history(
-            stats,
-            recent_product_ids=recent_ids,
+        # Optional hints for popularity fallback
+        last_event = history[0]
+        category_hint = last_event.get("category")
+        brand_hint = last_event.get("brand") or last_event.get("brandName")
+
+        # Step 3: pure session-based recommendation
+        ranked = recommend_next_items(
+            stats=stats,
+            current_session_items=recent_ids,
             limit=limit,
             time_decay_half_life_days=SESSION_TIME_DECAY_HALF_LIFE_DAYS,
-            diversity_lambda=SESSION_DIVERSITY_LAMBDA,
-            popularity_normalization=SESSION_POPULARITY_NORMALIZATION,
-            vector_store=self.vector_store,
-            embedding_model=self.embedding_model,
+            category_hint=category_hint,
+            brand_hint=brand_hint,
         )
+
         if not ranked:
-            return self.get_similar_products(product_id=recent_ids[0], limit=limit)
+            return self.get_popular_in_category(category=category_hint, limit=limit)
 
         return [
-            {"product_id": pid, "score": float(score), "recommendation_type": "session"}
+            {
+                "product_id": pid,
+                "score": float(score),
+                "recommendation_type": "session",
+            }
             for pid, score in ranked
         ]
 

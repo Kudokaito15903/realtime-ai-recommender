@@ -231,14 +231,6 @@ class RecommendationService:
         rating_weight: float = 0.15,
         price_penalty_weight: float = 0.1,
     ) -> List[Dict[str, Any]]:
-        """
-        Pipeline:
-        1) Lấy top-K tương tác có trọng số cao (interaction_score * recency_decay).
-        2) User vector = weighted mean embedding các sản phẩm đã tương tác.
-        3) Vector search (cosine) để lấy candidates.
-        4) Loại bỏ sản phẩm đã xem.
-        5) Re-rank theo similarity + sold + avgRating - price_distance.
-        """
         if not user_id:
             return []
 
@@ -246,88 +238,27 @@ class RecommendationService:
             user_id, limit=top_k_interactions * 2
         )
         if not history:
-            logger.debug(f"No history for user {user_id}; returning empty list")
+            logger.debug(f"No history for user {user_id}")
             return []
 
-        now = time.time()
-
-        def parse_ts(ts_val: Any) -> float:
-            if ts_val is None:
-                return 0.0
-            if isinstance(ts_val, (int, float)):
-                return float(ts_val)
-            try:
-                return datetime.fromisoformat(
-                    str(ts_val).replace("Z", "+00:00")
-                ).timestamp()
-            except Exception:
-                return 0.0
-
-        def interaction_weight(item: Dict[str, Any]) -> float:
-            base = float(item.get("score", 1.0) or 1.0)
-            ts = parse_ts(item.get("timestamp"))
-            age = max(now - ts, 0.0)
-            if recency_half_life_seconds <= 0:
-                decay = 1.0
-            else:
-                decay = math.exp(-age * math.log(2) / recency_half_life_seconds)
-            return base * decay
-
-        # Rank interactions by weight and keep top-K
-        weighted_history = []
-        for item in history:
-            pid = item.get("product_id")
-            if not pid:
-                continue
-            w = interaction_weight(item)
-            weighted_history.append(
-                {
-                    "product_id": str(pid),
-                    "weight": w,
-                    "price": item.get("price"),
-                }
-            )
-
-        weighted_history.sort(key=lambda x: x["weight"], reverse=True)
-        top_history = weighted_history[:top_k_interactions]
-
-        if not top_history:
-            return []
-
-        # Mean price for price distance
-        prices = [float(h["price"]) for h in top_history if h.get("price") is not None]
-        target_price = float(np.mean(prices)) if prices else 0.0
-
-        # Build user vector
-        accumulator = np.zeros(
-            self.embedding_model.embedding_dimension, dtype=np.float32
+        from domain.embeddings.user_embedding_engine import (
+            build_recency_weighted_user_vector,
         )
-        total_w = 0.0
 
-        viewed_ids = set()
-        for item in top_history:
-            pid = item["product_id"]
-            viewed_ids.add(pid)
-            emb = self.vector_store.get_product_embedding(pid)
-            if emb is None and self.product_store is not None:
-                try:
-                    product = self.product_store.get_product(pid)
-                    if product:
-                        emb = self.embedding_model.get_product_embedding(product)
-                except Exception:
-                    emb = None
-            if emb is None:
-                continue
-            accumulator += emb * item["weight"]
-            total_w += item["weight"]
+        user_vec, top_history, target_price = build_recency_weighted_user_vector(
+            history=history,
+            embedding_dimension=self.embedding_model.embedding_dimension,
+            vector_store=self.vector_store,
+            embedding_model=self.embedding_model,
+            product_store=self.product_store,
+            top_k_interactions=top_k_interactions,
+            recency_half_life_seconds=recency_half_life_seconds,
+        )
 
-        if total_w == 0:
+        # 🛑 Không search nếu vector không hợp lệ
+        if user_vec is None or np.linalg.norm(user_vec) == 0:
+            logger.debug(f"Zero user vector for user {user_id}")
             return []
-
-        user_vec = accumulator / total_w
-        norm = np.linalg.norm(user_vec)
-        if norm > 0:
-            user_vec /= norm
 
         # Vector search
         candidates = self.vector_store.find_similar_products(
@@ -335,30 +266,26 @@ class RecommendationService:
             limit=search_limit,
             min_score=similarity_threshold,
         )
-
         if not candidates:
             return []
 
-        # Filter out already viewed
+        viewed_ids = {str(h["product_id"]) for h in top_history}
+
         candidates = [
             c for c in candidates if str(c.get("product_id")) not in viewed_ids
         ]
-
         if not candidates:
             return []
 
         def get_meta(item: Dict[str, Any], key: str, default: float = 0.0) -> float:
-            if key in item and item[key] is not None:
-                try:
+            try:
+                if key in item and item[key] is not None:
                     return float(item[key])
-                except Exception:
-                    pass
-            meta = item.get("metadata", {}) or {}
-            if key in meta and meta[key] is not None:
-                try:
+                meta = item.get("metadata") or {}
+                if key in meta and meta[key] is not None:
                     return float(meta[key])
-                except Exception:
-                    pass
+            except Exception:
+                pass
             return default
 
         def price_distance(p: float) -> float:
@@ -366,15 +293,17 @@ class RecommendationService:
                 return 0.0
             return abs(p - target_price) / max(target_price, 1e-6)
 
-        ranked = []
+        ranked: List[Dict[str, Any]] = []
+
         for c in candidates:
             sim = float(c.get("similarity_score", c.get("score", 0.0)))
+            sim = min(max(sim, 0.0), 1.0)  # normalize
+
             sold = get_meta(c, "sold", 0.0)
             rating = get_meta(c, "avgRating", 0.0)
             price = get_meta(c, "price", 0.0)
 
-            # Simple normalizations
-            sold_norm = math.log1p(max(sold, 0.0)) / 10.0  # cap scale
+            sold_norm = math.log1p(max(sold, 0.0)) / 10.0
             rating_norm = min(max(rating / 5.0, 0.0), 1.0)
             price_penalty = price_distance(price)
 
@@ -392,7 +321,6 @@ class RecommendationService:
                     "sold": sold,
                     "avgRating": rating,
                     "price": price,
-                    "price_distance": price_penalty,
                     "price_distance": price_penalty,
                     "score": final_score,
                     "recommendation_type": "recency_weighted",

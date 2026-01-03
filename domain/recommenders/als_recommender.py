@@ -224,42 +224,38 @@ def recommend_for_user(
     Cui: Optional[sparse.csr_matrix] = None,
     limit: int = 10,
 ) -> List[Tuple[str, float]]:
-    """Return (product_id, score) using dot-product ranking."""
-    if not model or not user_id:
+
+    if not model or not user_id or limit <= 0:
         return []
 
     uidx = model.user_id_to_index.get(str(user_id))
-    if uidx is None:
+    if uidx is None or uidx >= model.user_factors.shape[0]:
         return []
 
-    u = model.user_factors[uidx]  # [k]
-    scores = (u @ model.item_factors.T).astype(np.float32, copy=False)  # [n_items]
+    u = model.user_factors[uidx]
+    scores = (u @ model.item_factors.T).astype(np.float32, copy=False)
 
-    # Filter already interacted items when matrix is available
+    n_items = scores.shape[0]
+
+    # filter seen items
     if Cui is not None and 0 <= uidx < Cui.shape[0]:
         start, end = Cui.indptr[uidx], Cui.indptr[uidx + 1]
         seen = Cui.indices[start:end]
-        if seen.size > 0:
-            scores[seen] = -np.inf
+        scores[seen[seen < n_items]] = -np.inf
 
-    if limit <= 0:
-        return []
-
-    n_items = scores.shape[0]
     topk = min(limit, n_items)
-    if topk <= 0:
-        return []
-
-    # argpartition for efficiency
     idx = np.argpartition(scores, -topk)[-topk:]
     idx = idx[np.argsort(scores[idx])[::-1]]
 
-    out: List[Tuple[str, float]] = []
+    out = []
     for i in idx:
+        if i < 0 or i >= n_items:
+            continue
         s = float(scores[i])
         if not np.isfinite(s):
             continue
-        out.append((str(model.product_ids[int(i)]), s))
+        out.append((str(model.product_ids[i]), s))
         if len(out) >= limit:
             break
+
     return out

@@ -146,6 +146,8 @@ class ProductRecommendation(BaseModel):
 
     product_id: str
     score: float
+    catregory: Optional[str] = None
+    brandName: Optional[str] = None
     recommendation_type: (
         str  # "similar", "frequently_bought_together", "popular_in_category"
     )

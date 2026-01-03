@@ -5,6 +5,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 import math
 from datetime import datetime
+from collections import defaultdict
 from loguru import logger
 
 from domain.embeddings.product_embeddings import get_embedding_model
@@ -39,10 +40,12 @@ from domain.recommenders.als_recommender import (
     recommend_for_user as als_recommend_for_user,
 )
 from domain.recommenders.session_recommender import (
-    TransitionStats,
+    SessionTransitionStats,
     build_session_transitions,
     recommend_next_items,
-)       
+)
+from domain.recommenders.popularity_recommender import get_popular_recommendations
+from domain.embeddings.product_embeddings import get_embedding_model
 
 
 class RecommendationService:
@@ -67,7 +70,7 @@ class RecommendationService:
 
             # Session-transition cache
             cls._instance._session_lock = threading.Lock()
-            cls._instance._session_stats: Optional[TransitionStats] = None
+            cls._instance._session_stats: Optional[SessionTransitionStats] = None
             cls._instance._session_loaded_at = 0.0
 
             logger.info("Recommendation Service initialized")
@@ -138,43 +141,89 @@ class RecommendationService:
     # Popular products (Supabase-based)
     # ---------------------------------------------------------
     def get_popular_in_category(
-        self, category: str, limit: int = 6
+        self, category: Optional[str] = None, limit: int = 6
     ) -> List[Dict[str, Any]]:
-        products = self.user_behavior.get_popular_products(
-            category=category, limit=limit
+        """
+        Get popular items.
+        
+        NEW implementation: uses Time-Decay logic (Trending) via Domain Recommender.
+        Fetches recent interactions and calculates score on the fly.
+        """
+        # 1. Fetch recent interactions (e.g. last 10k)
+        # We need a reasonable window to detect trends, but not too large for perf
+        interactions = self.user_behavior.get_recent_interactions(limit=10000)
+        
+        if not interactions:
+            # Fallback to simple DB aggregation if no recent interactions found
+            # (or for cold start)
+            # logger.info("No recent interactions for popularity, falling back to simple DB aggregation.")
+            products = self.user_behavior.get_popular_products(category=category, limit=limit)
+             
+            results = []
+            for p in products:
+                pid = p.get("product_id") or p.get("id")
+                if not pid: continue
+                
+                results.append({
+                    "product_id": str(pid),
+                    "score": 1.0,
+                    "recommendation_type": "popular_all_time",
+                    "name": p.get("name_product", "")
+                })
+            return results
+            
+        # 2. Helper to fetch product details for category filtering
+        def product_loader(pid):
+            return self.product_store.get_product(pid)
+            
+        # 3. Calculate Scores
+        ranked = get_popular_recommendations(
+            interactions, 
+            limit=limit, 
+            half_life_days=3.0, # 3-day half life = focus on weekly trends
+            category_filter=category,
+            product_store_func=product_loader
         )
-
+        
+        # 4. Format Result
         results = []
-        for p in products:
-            pid = p.get("product_id")
-            if not pid:
-                continue
-
-            rec = {
-                "product_id": pid,
-                "score": 1.0,  # popularity score placeholder
-                "recommendation_type": "popular_in_category",
-            }
-
-            # Enrich with variant info if product store is available
-            if self.product_store:
-                try:
-                    full_product = self.product_store.get_product(pid)
-                    if full_product and full_product.get("productVariants"):
-                        # Pick the first variant as the default recommendation
-                        # In a real scenario, logic could be more complex (e.g. best seller, in stock)
-                        v = full_product["productVariants"][0]
-                        rec["recommended_variant"] = {
-                            "sku": v.get("sku"),
-                            "variantName": v.get("variantName"),
-                            "color": v.get("color"),
-                            "price": v.get("price"),
-                        }
-                except Exception as e:
-                    logger.warning(f"Failed to fetch variants for {pid}: {e}")
-
-            results.append(rec)
-
+        for pid, score in ranked:
+            p = self.product_store.get_product(pid)
+            if p:
+                rec = {
+                    "product_id": pid,
+                    "score": float(score),
+                    "recommendation_type": "popular_trending",
+                    "name": p.get("name_product", ""),
+                    "price": p.get("price", 0)
+                }
+                
+                # Enrich with variant info if available (Legacy support)
+                if p.get("productVariants"):
+                    v = p["productVariants"][0]
+                    rec["recommended_variant"] = {
+                        "sku": v.get("sku"),
+                        "variantName": v.get("variantName"),
+                        "color": v.get("color"),
+                        "price": v.get("price"),
+                    }
+                    
+                results.append(rec)
+                
+        # Fill remaining slots with DB popularity if needed? 
+        if len(results) < limit:
+            existing_ids = {r["product_id"] for r in results}
+            fallback = self.user_behavior.get_popular_products(category=category, limit=limit)
+            for item in fallback:
+                if len(results) >= limit:
+                    break
+                pid = str(item.get("product_id") or item.get("id"))
+                if pid not in existing_ids:
+                    item["score"] = 0.5 # Lower score for fallback
+                    item["recommendation_type"] = "popular_all_time"
+                    if "product_id" not in item: item["product_id"] = pid
+                    results.append(item)
+                    
         return results
 
     # ---------------------------------------------------------
@@ -596,7 +645,10 @@ class RecommendationService:
             return []
 
         # 5. Merge + rerank
-        # 5a. Deduplicate and merge
+        # 5a. Normalize scores per strategy (CRITICAL for fairness)
+        self._normalize_scores(candidates)
+
+        # 5b. Deduplicate and merge
         merged = self._merge_candidates(candidates)
 
         # 5b. Enrich with product metadata for reranking
@@ -660,13 +712,58 @@ class RecommendationService:
 
         return context
 
+    def _normalize_scores(self, candidates: List[Dict[str, Any]]) -> None:
+        """
+        In-place Min-Max normalization of scores per strategy type.
+        Ensures ALS (0.1-5.0), Session (0.1), and others are on roughly [0, 1] scale.
+        """
+        # Group by recommendation type
+        grouped = defaultdict(list)
+        for rec in candidates:
+            rtype = rec.get("recommendation_type", "unknown")
+            grouped[rtype].append(rec)
+
+        for rtype, items in grouped.items():
+            if not items:
+                continue
+
+            # Find max score for this strategy
+            max_score = max(float(x.get("score", 0.0)) for x in items)
+
+            # Avoid division by zero
+            if max_score <= 1e-6:
+                continue
+
+            # Apply normalization
+            for item in items:
+                old_score = float(item.get("score", 0.0))
+                # Min-Max scaling: (x) / max
+                # We assume min is effectively 0 for these recommender types,
+                # or we just want to scale the peak to 1.0.
+                new_score = old_score / max_score
+                item["score"] = new_score
+                item["original_score"] = old_score  # Keep for debugging
+
     def _merge_candidates(
         self, candidates: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
         Merge candidates from different recommenders.
         Deduplicate and keep best score per product.
+        Applies Config-based weighting per strategy.
         """
+        from config import HYBRID_WEIGHT_ALS, HYBRID_WEIGHT_SESSION, HYBRID_WEIGHT_VECTOR
+
+        weights = {
+            "als": HYBRID_WEIGHT_ALS,
+            "session": HYBRID_WEIGHT_SESSION,
+            "recency_weighted": HYBRID_WEIGHT_VECTOR,
+            "similar": HYBRID_WEIGHT_VECTOR,
+            "search": HYBRID_WEIGHT_VECTOR,
+            "popular_in_category": 1.0, # Baseline
+            "unknown": 1.0
+        }
+
         best: Dict[str, Dict[str, Any]] = {}
 
         for rec in candidates:
@@ -674,7 +771,11 @@ class RecommendationService:
             if not pid:
                 continue
 
-            score = float(rec.get("score", rec.get("similarity_score", 0.0)))
+            rtype = rec.get("recommendation_type", "unknown")
+            weight = weights.get(rtype, 1.0)
+            
+            raw_score = float(rec.get("score", rec.get("similarity_score", 0.0)))
+            score = raw_score * weight
             prev = best.get(pid)
 
             # Keep the recommendation with highest score

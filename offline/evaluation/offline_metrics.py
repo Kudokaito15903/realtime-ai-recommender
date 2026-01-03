@@ -137,6 +137,36 @@ def mean_reciprocal_rank(
     return 0.0
 
 
+def hit_rate_at_k(
+    recommended: List[str],
+    relevant: Set[str],
+    k: int,
+) -> float:
+    """
+    Calculate Hit Rate@K (1 if at least one relevant item in top K, else 0).
+
+    Args:
+        recommended: List of recommended item IDs
+        relevant: Set of relevant (ground truth) item IDs
+        k: Number of top recommendations to consider
+
+    Returns:
+        Hit Rate@K score (0.0 or 1.0)
+    """
+    if not relevant:
+        return 0.0
+
+    top_k = recommended[:k]
+    if not top_k:
+        return 0.0
+
+    for item in top_k:
+        if item in relevant:
+            return 1.0
+
+    return 0.0
+
+
 def coverage(
     all_recommendations: List[List[str]],
     all_items: Set[str],
@@ -226,6 +256,7 @@ def evaluate_recommendations(
         metrics[f"precision@{k}"] = precision_at_k(recommendations, ground_truth, k)
         metrics[f"recall@{k}"] = recall_at_k(recommendations, ground_truth, k)
         metrics[f"ndcg@{k}"] = ndcg_at_k(recommendations, ground_truth, k)
+        metrics[f"hr@{k}"] = hit_rate_at_k(recommendations, ground_truth, k)
 
     metrics["mrr"] = mean_reciprocal_rank(recommendations, ground_truth)
 

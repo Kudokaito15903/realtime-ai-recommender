@@ -162,6 +162,16 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
+
+# ================================
+# HYBRID RECOMMENDER WEIGHTS
+# ================================
+HYBRID_WEIGHT_ALS = float(os.getenv("HYBRID_WEIGHT_ALS", 1.0))
+HYBRID_WEIGHT_SESSION = float(os.getenv("HYBRID_WEIGHT_SESSION", 1.0))
+HYBRID_WEIGHT_VECTOR = float(os.getenv("HYBRID_WEIGHT_VECTOR", 1.0))
 
 
 class Config:
@@ -200,6 +210,12 @@ class Config:
         )
         self.MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 
+        #Chatbot
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+        self.OPENAI_API_URL = os.getenv(
+            "OPENAI_API_URL", "https://api.openai.com/v1"
+        )
         # Logging
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"

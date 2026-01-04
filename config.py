@@ -183,6 +183,15 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", 'sk-or-v1-b3d4e7527daf0af67a0f97c6a
 OPENAI_MODEL= os.getenv("OPENAI_MODEL", 'google/gemma-3-27b-it:free')
 OPENAI_API_URL = os.getenv("OPENAI_API_URL", 'https://openrouter.ai/api/v1')
 
+# Brand & Fine-tuning
+BRAND_PERSONALITY = os.getenv(
+    "BRAND_PERSONALITY", 
+    "Bạn là một trợ lý ảo nhiệt tình, am hiểu công nghệ và luôn sẵn sàng giúp đỡ. "
+    "Hãy sử dụng ngôn ngữ trẻ trung, năng động nhưng vẫn giữ sự chuyên nghiệp. "
+    "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'."
+)
+COLLECT_FINE_TUNING_DATA = os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
+
 class Config:
     """Configuration class for easy access to settings."""
 
@@ -233,6 +242,15 @@ class Config:
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
         self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL) 
         self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", OPENAI_API_URL)
+
+        # Brand & Fine-tuning
+        self.BRAND_PERSONALITY = os.getenv(
+            "BRAND_PERSONALITY", 
+            "Bạn là một trợ lý ảo nhiệt tình, am hiểu công nghệ và luôn sẵn sàng giúp đỡ. "
+            "Hãy sử dụng ngôn ngữ trẻ trung, năng động nhưng vẫn giữ sự chuyên nghiệp. "
+            "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'."
+        )
+        self.COLLECT_FINE_TUNING_DATA = os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
 
     def get_redis_url(self) -> str:
         """Get Redis connection URL."""

@@ -15,7 +15,7 @@ class ChatRequest(BaseModel):
 async def chat(req: ChatRequest):
     try:
         svc = ChatbotService()
-        answer, contexts = svc.answer(req.query, top_k=req.top_k)
+        answer, contexts = await svc.answer(req.query, top_k=req.top_k)
         
         # Detect intent for response metadata
         intent = svc._detect_intent(req.query)

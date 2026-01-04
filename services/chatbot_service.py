@@ -2,16 +2,17 @@ import os
 import time
 import json
 import re
+import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 from urllib import request as urlrequest
 from urllib.error import HTTPError
-from openai import OpenAI
+from openai import AsyncOpenAI
+import redis.asyncio as redis
 
 from adapters.factory import get_vector_store, get_product_store, get_content_store, get_user_behavior
 from domain.embeddings.product_embeddings import get_embedding_model
 import config
-
 
 class ChatbotService:
     def __init__(self):
@@ -20,60 +21,99 @@ class ChatbotService:
         self.product_store = get_product_store()
         self.content_store = get_content_store()
         self.user_behavior = get_user_behavior()
-        self.client = OpenAI(
+        
+        # Async OpenAI Client
+        self.client = AsyncOpenAI(
             base_url=config.OPENAI_API_URL,
             api_key=config.OPENAI_API_KEY,
         )
+        
+        self.brand_personality = config.BRAND_PERSONALITY
+        self.collect_data = config.COLLECT_FINE_TUNING_DATA
+        self.data_file = os.path.join("data", "fine_tuning_data.jsonl")
+        
+        # Redis Caching
+        self.conf = config.Config()
+        self.redis = redis.from_url(self.conf.get_redis_url())
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Retrieve top-K documents from the vector store for the query (products and content)."""
-        if not query:
-            return []
-        q_emb = self.embedding_model.get_embedding(query)
-        candidates = self.vector_store.find_similar_products(
-            embedding=q_emb, limit=top_k * 2, min_score=0.0  # Get more to filter
+    async def _get_embedding_async(self, query: str):
+        """Run blocking embedding generation in a thread."""
+        return await asyncio.to_thread(self.embedding_model.get_embedding, query)
+
+    async def _find_similar_products_async(self, embedding, limit):
+        """Run blocking vector search in a thread."""
+        return await asyncio.to_thread(
+            self.vector_store.find_similar_products,
+            embedding=embedding,
+            limit=limit,
+            min_score=0.0
         )
 
-        results: List[Dict[str, Any]] = []
+    async def _fetch_product_async(self, pid):
+        """Run blocking product fetch in a thread."""
+        # Check if product store is available
+        if not self.product_store:
+            return None
+        try:
+             return await asyncio.to_thread(self.product_store.get_product, pid)
+        except Exception as e:
+            logger.warning(f"Error fetching product {pid}: {e}")
+            return None
+
+    async def _fetch_content_async(self, cid):
+        """Run blocking content fetch in a thread."""
+        if not self.content_store:
+            return None
+        try:
+            return await asyncio.to_thread(self.content_store.get_content, cid)
+        except Exception:
+            return None
+
+    async def retrieve(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Retrieve top-K documents asynchronously."""
+        if not query:
+            return []
+            
+        # 1. Generate Embedding
+        q_emb = await self._get_embedding_async(query)
+        
+        # 2. Vector Search
+        candidates = await self._find_similar_products_async(q_emb, top_k * 2)
+        
+        # 3. Enrich Results Concurrently
+        tasks = []
         for c in candidates:
             pid = c.get("product_id")
             meta = c.get("metadata", {}) or {}
-            item_type = meta.get("type", "product")  # Default to product
-
+            item_type = meta.get("type", "product")
+            
             if item_type == "product":
-                # Enrich with product details
-                details = None
-                try:
-                    if self.product_store:
-                        details = self.product_store.get_product(pid)
-                except Exception:
-                    details = None
-
-                results.append({
-                    "id": pid,
-                    "type": "product",
-                    "score": float(c.get("similarity_score", c.get("score", 0.0))),
-                    "metadata": meta,
-                    "data": details,
-                })
+                tasks.append(self._fetch_product_async(pid))
             elif item_type == "content":
-                # Enrich with content details
-                details = None
-                try:
-                    if self.content_store:
-                        details = self.content_store.get_content(pid)
-                except Exception:
-                    details = None
+                tasks.append(self._fetch_content_async(pid))
+            else:
+                tasks.append(asyncio.sleep(0)) # No op
 
-                results.append({
-                    "id": pid,
-                    "type": "content",
-                    "score": float(c.get("similarity_score", c.get("score", 0.0))),
-                    "metadata": meta,
-                    "data": details,
-                })
-
-        # Sort by score and take top_k
+        # Run all data fetches in parallel
+        details_list = await asyncio.gather(*tasks)
+        
+        results: List[Dict[str, Any]] = []
+        for c, details in zip(candidates, details_list):
+            if details is None:
+                continue
+                
+            pid = c.get("product_id")
+            meta = c.get("metadata", {}) or {}
+            item_type = meta.get("type", "product")
+            
+            results.append({
+                "id": pid,
+                "type": item_type,
+                "score": float(c.get("similarity_score", c.get("score", 0.0))),
+                "metadata": meta,
+                "data": details,
+            })
+            
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
@@ -113,7 +153,8 @@ class ChatbotService:
         contexts_combined = "\n".join(context_texts)
         prompt = (
             "You are a helpful e-commerce assistant. Use the provided product and content information to answer the user's question. "
-            "If you don't know the answer, say you don't know and provide a fallback instruction to contact support.\n\n"
+            "If you don't know the answer, say you don't know.\n"
+            f"{self.brand_personality}\n\n"
         )
         if contexts_combined:
             prompt += f"Context:\n{contexts_combined}\n\n"
@@ -151,7 +192,8 @@ class ChatbotService:
         
         prompt = (
             "Bạn là trợ lý bán hàng thông minh. Hãy trả lời câu hỏi của khách hàng về thông tin sản phẩm "
-            "dựa trên dữ liệu sản phẩm được cung cấp. Hãy trả lời chi tiết, rõ ràng và thân thiện.\n\n"
+            "dựa trên dữ liệu sản phẩm được cung cấp.\n"
+            f"{self.brand_personality}\n\n"
         )
         prompt += "Thông tin sản phẩm:\n" + "\n".join(product_texts)
         prompt += f"\n\nCâu hỏi của khách hàng: {query}\n"
@@ -189,7 +231,8 @@ class ChatbotService:
         prompt = (
             "Bạn là chuyên gia tư vấn sản phẩm. Hãy so sánh các sản phẩm được liệt kê dưới đây "
             "dựa trên giá cả, đánh giá, thông số kỹ thuật và các đặc điểm khác. "
-            "Hãy đưa ra nhận xét khách quan và gợi ý sản phẩm phù hợp nhất.\n\n"
+            "Hãy đưa ra nhận xét khách quan và gợi ý sản phẩm phù hợp nhất.\n"
+            f"{self.brand_personality}\n\n"
         )
         prompt += comparison_text
         prompt += f"\nCâu hỏi của khách hàng: {query}\n"
@@ -209,7 +252,8 @@ class ChatbotService:
         
         prompt = (
             "Bạn là nhân viên tư vấn chính sách. Hãy trả lời câu hỏi của khách hàng về các chính sách "
-            "của cửa hàng dựa trên thông tin được cung cấp. Hãy trả lời rõ ràng, chính xác và thân thiện.\n\n"
+            "của cửa hàng dựa trên thông tin được cung cấp.\n"
+            f"{self.brand_personality}\n\n"
         )
         if policy_texts:
             prompt += "Thông tin chính sách:\n" + "\n".join(policy_texts)
@@ -234,8 +278,8 @@ class ChatbotService:
         
         prompt = (
             "Bạn là nhân viên chăm sóc khách hàng chuyên nghiệp. Hãy trả lời câu hỏi của khách hàng "
-            "một cách thân thiện, hữu ích và chuyên nghiệp. Nếu không có thông tin, hãy hướng dẫn "
-            "khách hàng liên hệ bộ phận hỗ trợ.\n\n"
+            "một cách hữu ích và chuyên nghiệp. Nếu không có thông tin, hãy hướng dẫn khách hàng liên hệ bộ phận hỗ trợ.\n"
+            f"{self.brand_personality}\n\n"
         )
         if context_texts:
             prompt += "Thông tin tham khảo:\n" + "\n".join(context_texts)
@@ -279,25 +323,23 @@ class ChatbotService:
         
         prompt = (
             "Bạn là trợ lý bán hàng. Hãy trả lời câu hỏi của khách hàng về tình trạng tồn kho, "
-            "giá cả và thông tin realtime của sản phẩm dựa trên dữ liệu được cung cấp. "
-            "Hãy cung cấp thông tin chính xác và cập nhật.\n\n"
+            "giá cả và thông tin realtime của sản phẩm dựa trên dữ liệu được cung cấp.\n"
+            f"{self.brand_personality}\n\n"
         )
         prompt += "Dữ liệu realtime:\n" + "\n".join(data_texts)
         prompt += f"\n\nCâu hỏi của khách hàng: {query}\n"
         prompt += "Hãy trả lời bằng tiếng Việt, cung cấp thông tin realtime chính xác."
         return prompt
 
-    def _call_openai_chat(self, prompt: str) -> str:
+    async def _call_openai_chat(self, prompt: str) -> str:
         """
-        Call OpenRouter Chat Completions API via HTTP request.
+        Call OpenRouter Chat Completions API via Async Client.
         """
-
-
         try:
-            completion = self.client.chat.completions.create(
+            completion = await self.client.chat.completions.create(
                 model= config.OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are an e-commerce recommendation assistant."},
+                    {"role": "system", "content": f"You are an e-commerce recommendation assistant. {self.brand_personality}"},
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=512,
@@ -349,12 +391,12 @@ class ChatbotService:
         
         return 'general'
 
-    def get_product_info(self, query: str, top_k: int = 3) -> Tuple[str, List[Dict[str, Any]]]:
+    async def get_product_info(self, query: str, top_k: int = 3) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Get detailed product information based on query.
         """
         # Try to extract product name/ID from query
-        contexts = self.retrieve(query, top_k=top_k)
+        contexts = await self.retrieve(query, top_k=top_k)
         
         if not contexts:
             return "Xin lỗi, tôi không tìm thấy thông tin sản phẩm nào phù hợp với câu hỏi của bạn.", []
@@ -403,16 +445,16 @@ class ChatbotService:
         
         # Build prompt with detailed product info
         prompt = self._build_product_info_prompt(query, product_details)
-        answer = self._call_openai_chat(prompt)
+        answer = await self._call_openai_chat(prompt)
         
         return answer, product_details
 
-    def compare_products(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+    async def compare_products(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Compare multiple products based on query.
         """
         # Extract product names/IDs from query
-        contexts = self.retrieve(query, top_k=top_k)
+        contexts = await self.retrieve(query, top_k=top_k)
         
         if len(contexts) < 2:
             return "Để so sánh sản phẩm, vui lòng cung cấp tên hoặc mô tả của ít nhất 2 sản phẩm.", []
@@ -462,16 +504,16 @@ class ChatbotService:
         
         # Build comparison prompt
         prompt = self._build_comparison_prompt(query, products_to_compare)
-        answer = self._call_openai_chat(prompt)
+        answer = await self._call_openai_chat(prompt)
         
         return answer, products_to_compare
 
-    def get_policy_info(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+    async def get_policy_info(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Get policy information (return, warranty, shipping, payment, etc.)
         """
         # Search for policy content
-        contexts = self.retrieve(query, top_k=top_k)
+        contexts = await self.retrieve(query, top_k=top_k)
         
         # Filter for content type (policies)
         policy_contexts = [
@@ -494,7 +536,9 @@ class ChatbotService:
                         categories_to_fetch.append("cskh")
 
                     for cat in categories_to_fetch:
-                        all_content = self.content_store.list_content(category=cat, limit=5)
+                        # self.content_store.list_content is blocking, ensure wrapping if needed
+                        # For now assume mostly fast or need to wrap in to_thread
+                        all_content = await asyncio.to_thread(self.content_store.list_content, category=cat, limit=5)
                         for content in all_content:
                             policy_contexts.append({
                                 "id": content.get("id"),
@@ -517,7 +561,7 @@ class ChatbotService:
             
             if not has_cskh_context:
                 try:
-                    cskh_content = self.content_store.list_content(category="cskh", limit=3)
+                    cskh_content = await asyncio.to_thread(self.content_store.list_content, category="cskh", limit=3)
                     for content in cskh_content:
                          policy_contexts.append({
                             "id": content.get("id"),
@@ -533,16 +577,16 @@ class ChatbotService:
         
         # Build policy prompt
         prompt = self._build_policy_prompt(query, policy_contexts)
-        answer = self._call_openai_chat(prompt)
+        answer = await self._call_openai_chat(prompt)
         
         return answer, policy_contexts
 
-    def handle_cskh(self, query: str) -> Tuple[str, List[Dict[str, Any]]]:
+    async def handle_cskh(self, query: str) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Handle customer service queries automatically.
         """
         # Search for CSKH content
-        contexts = self.retrieve(query, top_k=5)
+        contexts = await self.retrieve(query, top_k=5)
         
         # Filter for CSKH content
         cskh_contexts = [
@@ -557,16 +601,16 @@ class ChatbotService:
         
         # Build CSKH prompt with helpful responses
         prompt = self._build_cskh_prompt(query, cskh_contexts)
-        answer = self._call_openai_chat(prompt)
+        answer = await self._call_openai_chat(prompt)
         
         return answer, cskh_contexts
 
-    def get_realtime_data(self, query: str, top_k: int = 3) -> Tuple[str, List[Dict[str, Any]]]:
+    async def get_realtime_data(self, query: str, top_k: int = 3) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Get realtime data (stock, price, rating updates).
         """
         # Extract product from query
-        contexts = self.retrieve(query, top_k=top_k)
+        contexts = await self.retrieve(query, top_k=top_k)
         
         if not contexts:
             return "Xin lỗi, tôi không tìm thấy sản phẩm nào. Vui lòng cung cấp tên sản phẩm cụ thể.", []
@@ -581,11 +625,11 @@ class ChatbotService:
                 
                 product_id = product.get("id")
                 
-                # Get fresh product data
+                # Get fresh product data using thread
                 fresh_product = None
                 if self.product_store:
                     try:
-                        fresh_product = self.product_store.get_product(product_id)
+                        fresh_product = await asyncio.to_thread(self.product_store.get_product, product_id)
                     except Exception as e:
                         logger.warning(f"Error fetching fresh product data: {e}")
                 
@@ -605,14 +649,8 @@ class ChatbotService:
                     })
                 
                 # Get recent interaction stats if available
-                view_count = 0
-                if self.user_behavior and product_id:
-                    try:
-                        # This would need to be implemented in user_behavior interface
-                        # For now, use product metadata
-                        pass
-                    except Exception:
-                        pass
+                # This would need to be implemented in user_behavior interface
+                # For now, pass
                 
                 realtime_data = {
                     "product_id": product_id,
@@ -628,30 +666,95 @@ class ChatbotService:
         
         # Build realtime data prompt
         prompt = self._build_realtime_prompt(query, realtime_info)
-        answer = self._call_openai_chat(prompt)
+        answer = await self._call_openai_chat(prompt)
         
         return answer, realtime_info
 
-    def answer(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+    def _log_interaction(self, query: str, contexts: List[Dict[str, Any]], answer: str, intent: str):
+        """Log interaction for fine-tuning. (Sync is fine here)"""
+        if not self.collect_data:
+            return
+
+        try:
+            # Format context for logging
+            context_str = json.dumps([
+                {
+                    "id": c.get("id"),
+                    "type": c.get("type"),
+                    "name": c.get("data", {}).get("name") if c.get("type") == "product" else c.get("data", {}).get("title")
+                } 
+                for c in contexts
+            ], ensure_ascii=False)
+
+            log_entry = {
+                "timestamp": time.time(),
+                "intent": intent,
+                "user_query": query,
+                "context_summary": context_str,
+                "model_answer": answer,
+                "training_prompt": f"User: {query}\nContext: {context_str}",
+                "training_completion": answer
+            }
+            
+            os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
+            with open(self.data_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                
+        except Exception as e:
+            # Don't let logging fail the response
+            logger.warning(f"Failed to log interaction: {e}")
+
+    async def answer(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Main answer method with intent routing.
         """
         intent = self._detect_intent(query)
         logger.debug(f"Detected intent: {intent} for query: {query}")
         
+        # Check Cache
+        cache_key = f"chatbot:{intent}:{query}"
+        try:
+            cached = await self.redis.get(cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                data = json.loads(cached)
+                return data["answer"], data["contexts"]
+        except Exception as e:
+            logger.warning(f"Cache get failed: {e}")
+
         if intent == 'product_info':
-            return self.get_product_info(query, top_k=top_k)
+            answer, contexts = await self.get_product_info(query, top_k=top_k)
         elif intent == 'compare':
-            return self.compare_products(query, top_k=top_k)
+            answer, contexts = await self.compare_products(query, top_k=top_k)
         elif intent == 'policy':
-            return self.get_policy_info(query, top_k=top_k)
+            answer, contexts = await self.get_policy_info(query, top_k=top_k)
         elif intent == 'cskh':
-            return self.handle_cskh(query)
+            answer, contexts = await self.handle_cskh(query)
         elif intent == 'realtime':
-            return self.get_realtime_data(query, top_k=top_k)
+            answer, contexts = await self.get_realtime_data(query, top_k=top_k)
         else:
             # General query - use original RAG approach
-            contexts = self.retrieve(query, top_k=top_k)
+            contexts = await self.retrieve(query, top_k=top_k)
             prompt = self._build_prompt(query, contexts)
-            answer = self._call_openai_chat(prompt)
-            return answer, contexts
+            answer = await self._call_openai_chat(prompt)
+        
+        # Log the interaction (sync is okay, or wrap in thread if file IO is slow)
+        self._log_interaction(query, contexts, answer, intent)
+        
+        # Set Cache
+        try:
+            ttl = 60 # Default 60s
+            if intent == 'realtime':
+                ttl = 10 # Short cache for realtime
+            elif intent == 'product_info':
+                ttl = 3600 # 1h for static info
+                
+            await self.redis.setex(
+                cache_key,
+                ttl,
+                json.dumps({"answer": answer, "contexts": contexts}, ensure_ascii=False)
+            )
+        except Exception as e:
+             logger.warning(f"Cache set failed: {e}")
+
+        return answer, contexts

@@ -3,6 +3,7 @@ import time
 import signal
 import sys
 import uuid
+import json
 from typing import Dict, Any
 from loguru import logger
 
@@ -36,7 +37,8 @@ class ProductEventHandler:
 
         self._started = False
 
-        logger.info(f"ProductEventHandler initialized | worker={self.worker_name}")
+        logger.info(
+            f"ProductEventHandler initialized | worker={self.worker_name}")
 
     # ------------------------------------------------------------------
     # Event handler (CRITICAL)
@@ -56,7 +58,9 @@ class ProductEventHandler:
                 product_id = data.get("id") or data.get("product_id")
 
             if not product_id:
-                logger.error(f"Invalid product event schema (missing ID), skipping: {event}")
+                logger.error(
+                    f"Invalid product event schema (missing ID), skipping: {event}"
+                )
                 return
 
         logger.debug(
@@ -87,61 +91,197 @@ class ProductEventHandler:
 
         embedding = self.embedding_model.get_product_embedding(data)
         metadata = self._build_metadata(data)
-
         success = self.vector_store.store_product_embedding(
             product_id=product_id,
             embedding=embedding,
             metadata=metadata,
         )
-
         if not success:
-            raise RuntimeError(f"Vector upsert failed for product {product_id}")
+            raise RuntimeError(
+                f"Vector upsert failed for product {product_id}")
 
-        logger.info(
-            f"Vector upsert OK | product={product_id} "
-            f"time={time.time() - start_time:.3f}s"
-        )
+        logger.info(f"Vector upsert OK | product={product_id} "
+                    f"time={time.time() - start_time:.3f}s")
 
     def _process_delete(self, product_id: str) -> None:
         success = self.vector_store.delete_product_embedding(product_id)
 
         if not success:
-            raise RuntimeError(f"Vector delete failed for product {product_id}")
+            raise RuntimeError(
+                f"Vector delete failed for product {product_id}")
 
         logger.info(f"Vector deleted | product={product_id}")
 
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------
-    def _build_metadata(self, product: dict) -> dict:
-        category = product.get("category")
-        if not category and product.get("categoryId"):
-            cid = product["categoryId"]
-            category = cid[0] if isinstance(cid, list) and cid else cid
 
-        # Handle product variants
-        variants = product.get("productVariants")
-        if variants and isinstance(variants, list) and len(variants) > 0:
-            # Aggregate prices, brands, and descriptions from variants
-            prices = [v.get("price") for v in variants if v.get("price") is not None]
-            brands = [v.get("brandName") for v in variants if v.get("brandName")]
-            descriptions = [v.get("description") for v in variants if v.get("description")]
-            price = prices[0] if prices else product.get("price", 0)
-            brand = brands[0] if brands else product.get("brandName", "")
-            description = descriptions[0] if descriptions else product.get("description", "")
-        else:
-            price = product.get("price", 0)
-            brand = product.get("brandName", "")
-            description = product.get("description", "")
+    def _build_metadata(self, data: dict) -> dict:
+        identity = {
+            "product_id": data.get("sku"),
+            "name": data.get("name"),
+            "brand": data.get("brandName"),
+            "sku": data.get("sku"),
+            "type": "product",
+        }
 
+        # -----------------------------
+        # 2. Commercial
+        # -----------------------------
+        commercial = {
+            "price": data.get("price"),
+            "list_price": data.get("listPrice"),
+            "currency": "USD",
+            "has_video": bool(data.get("videoUrl")),
+            "in_stock": True,
+        }
+
+        # -----------------------------
+        # 3. Taxonomy
+        # -----------------------------
+        taxonomy = {
+            "category": data.get("category"),
+            "category_ids": data.get("categoryId", []),
+            "tags": self._build_tags(data),
+        }
+
+        # -----------------------------
+        # 4. Attributes (structured)
+        # -----------------------------
+        attributes = {}
+        specs_text_chunks = []
+
+        for spec in data.get("specifications", []):
+            group = spec.get("group", "general").lower()
+            key = spec.get("key", "").lower().replace(" ", "_")
+            value = spec.get("value")
+
+            if not group or not key or value is None:
+                continue
+
+            attributes.setdefault(group, {})[key] = value
+            specs_text_chunks.append(f"{spec.get('key')}: {value}")
+
+        # -----------------------------
+        # 5. Variants
+        # -----------------------------
+        variants = []
+        variant_colors = []
+
+        for v in data.get("productVariants", []):
+            variants.append({
+                "sku": v.get("sku"),
+                "name": v.get("variantName"),
+                "color": v.get("color"),
+                "price": v.get("price"),
+            })
+
+            if v.get("color"):
+                variant_colors.append(v.get("color"))
+
+            for bs in v.get("bestSpecifications", []):
+                specs_text_chunks.append(f"{bs.get('key')}: {bs.get('value')}")
+
+        # -----------------------------
+        # 6. AI Embedding Text
+        # -----------------------------
+        embedding_text = self._build_embedding_text(
+            name=data.get("name"),
+            brand=data.get("brandName"),
+            category=data.get("category"),
+            price=data.get("price"),
+            description=data.get("description"),
+            specs_text=specs_text_chunks,
+            colors=variant_colors,
+            rating=data.get("avgRating"),
+        )
+
+        # -----------------------------
+        # 7. AI Metadata
+        # -----------------------------
+        ai = {
+            "embedding_text":
+            embedding_text,
+            "intents": [
+                "product_info",
+                "price_check",
+                "compare_products",
+                "variant_selection",
+                "technical_specs",
+            ],
+        }
+
+        # -----------------------------
+        # 8. Final Metadata
+        # -----------------------------
         return {
             "entity_type": "product",
-            "name": product.get("name", ""),
-            "category": category or "unknown",
-            "price": str(price or 0),
-            "brand": brand,
-            "description": description,
+            # Flatten key fields for easy filtering in Pinecone
+            "product_id": data.get("sku"),
+            "name": data.get("name"),
+            "category": data.get("category", "unknown"),
+            "brand": data.get("brandName", ""),
+            "price": float(data.get("price", 0) or 0),
+            "avg_rating": float(data.get("avgRating", 0) or 0),
+            "has_video": bool(data.get("videoUrl")),
+            
+            # Serialize complex structures to JSON strings
+            "identity": json.dumps(identity),
+            "commercial": json.dumps(commercial),
+            "taxonomy": json.dumps(taxonomy),
+            "attributes": json.dumps(attributes),
+            "variants": json.dumps(variants),
+            "ai": json.dumps(ai),
         }
+
+    def _build_tags(self, data: dict) -> list:
+        tags = set()
+
+        if data.get("category"):
+            tags.add(data["category"].lower())
+
+        for cid in data.get("categoryId", []):
+            tags.add(cid.lower())
+
+        if data.get("brandName"):
+            tags.add(data["brandName"].lower())
+
+        if data.get("color"):
+            tags.add(data["color"].lower())
+
+        return list(tags)
+
+    def _build_embedding_text(
+        self,
+        name: str,
+        brand: str,
+        category: str,
+        price: float,
+        description: str,
+        specs_text: list,
+        colors: list,
+        rating: float,
+    ) -> str:
+        parts = []
+
+        if name:
+            parts.append(f"Product name: {name}.")
+        if brand:
+            parts.append(f"Brand: {brand}.")
+        if category:
+            parts.append(f"Category: {category}.")
+        if price is not None:
+            parts.append(f"Price: {price}.")
+        if rating:
+            parts.append(f"Average rating: {rating} stars.")
+        if description:
+            parts.append(description)
+        if specs_text:
+            parts.append("Specifications: " + ", ".join(specs_text))
+        if colors:
+            parts.append("Available colors: " + ", ".join(set(colors)))
+
+        return " ".join(parts)
 
     # ------------------------------------------------------------------
     # Lifecycle (MATCH ContentEventHandler)
@@ -154,12 +294,15 @@ class ProductEventHandler:
         self.event_processor.start_consumer(consumer_id=self.worker_name)
 
         self._started = True
-        logger.info(f"Product vector consumer started | worker={self.worker_name}")
+        logger.info(
+            f"Product vector consumer started | worker={self.worker_name}")
 
     def stop(self) -> None:
         self.event_processor.stop_consumer()
         self._started = False
-        logger.info(f"Product vector consumer stopped | worker={self.worker_name}")
+        logger.info(
+            f"Product vector consumer stopped | worker={self.worker_name}")
+
 
 # ----------------------------------------------------------------------
 # Process bootstrap
@@ -185,7 +328,8 @@ def start_vector_consumer_process(worker_name: str | None = None) -> None:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Product Vector Kafka Consumer")
+    parser = argparse.ArgumentParser(
+        description="Product Vector Kafka Consumer")
     parser.add_argument("--worker-name", type=str)
     args = parser.parse_args()
 

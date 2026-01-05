@@ -144,7 +144,7 @@ def get_product_event_processor() -> EventProcessorInterface:
     if _product_event_processor is None:
         _product_event_processor = create_event_processor(
             topic=config.KAFKA_PRODUCT_TOPIC,
-            group_id="recommender-product-group",
+            group_id=config.KAFKA_PRODUCT_GROUP_ID,
             entity_type="product",
         )
     return _product_event_processor
@@ -155,7 +155,7 @@ def get_content_event_processor() -> EventProcessorInterface:
     if _content_event_processor is None:
         _content_event_processor = create_event_processor(
             topic=config.KAFKA_CONTENT_TOPIC,
-            group_id="recommender-content-group",
+            group_id=config.KAFKA_CONTENT_GROUP_ID,
             entity_type="content",
         )
     return _content_event_processor

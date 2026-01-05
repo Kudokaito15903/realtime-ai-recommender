@@ -27,6 +27,8 @@ BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9094")
 KAFKA_PRODUCT_TOPIC = os.getenv("KAFKA_PRODUCT_TOPIC", "product-events")
 KAFKA_CONTENT_TOPIC = os.getenv("KAFKA_CONTENT_TOPIC", "content-events")
+KAFKA_PRODUCT_GROUP_ID = os.getenv("KAFKA_PRODUCT_GROUP_ID", "recommender-product-group-v3")
+KAFKA_CONTENT_GROUP_ID = os.getenv("KAFKA_CONTENT_GROUP_ID", "recommender-content-group")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recommender-group")
 
 # ================================
@@ -210,6 +212,10 @@ class Config:
         )
         self.DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", DATA_STORE_TYPE)
         self.BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", BEHAVIOR_STORE_TYPE)
+        
+        # Kafka configuration
+        self.KAFKA_PRODUCT_GROUP_ID = os.getenv("KAFKA_PRODUCT_GROUP_ID", KAFKA_PRODUCT_GROUP_ID)
+        self.KAFKA_CONTENT_GROUP_ID = os.getenv("KAFKA_CONTENT_GROUP_ID", KAFKA_CONTENT_GROUP_ID)
 
         # Redis configuration
         self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")

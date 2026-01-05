@@ -123,68 +123,43 @@ class ProductEmbeddingModel:
         if product_data.get("category"):
             text_parts.append(f"Category: {product_data['category']}")
 
+        IMPORTANT_SPECS = {
+            "battery life",
+            "screen size",
+            "ram",
+            "storage",
+            "weight",
+            "dimensions",
+            "processor",
+        }
+
         # Specifications
         specifications = product_data.get("specifications")
-        if specifications:
-            if isinstance(specifications, list):
-                # Handle list of Specification objects
-                spec_texts = []
-                for spec in specifications:
-                    if isinstance(spec, dict):
-                        key = spec.get("key", "")
-                        value = spec.get("value", "")
-                        group = spec.get("group", "")
-                        if key and value:
-                            spec_texts.append(f"{key}: {value}")
-                if spec_texts:
-                    text_parts.append(f"Specifications: {', '.join(spec_texts)}")
-            elif isinstance(specifications, dict):
-                # Handle legacy dict format
-                spec_texts = [f"{k}: {v}" for k, v in specifications.items()]
-                if spec_texts:
-                    text_parts.append(f"Specifications: {', '.join(spec_texts)}")
+        spec_texts = []
 
-        # Product variants info (include variant names and colors)
-        variants = product_data.get("productVariants")
-        if variants:
-            colors = set()
-            variant_names = set()
+        for spec in specifications:
+            key = spec.get("key", "").lower()
+            value = spec.get("value")
+            if key and value and key in IMPORTANT_SPECS:
+                spec_texts.append(f"{spec['key']}: {value}")
+        if spec_texts:
+            text_parts.append("Key specs: " + ", ".join(spec_texts))
 
-            for v in variants:
-                if v.get("color"):
-                    colors.add(v["color"])
-                if v.get("variantName"):
-                    variant_names.add(v["variantName"])
+        variants = product_data.get("productVariants", [])
+        variant_perf_specs = set()
 
-            if colors:
-                text_parts.append(f"Available colors: {', '.join(colors)}")
+        for v in variants:
+            for spec in v.get("bestSpecifications", []):
+                key = spec.get("key", "").lower()
+                value = spec.get("value")
+                if key and value and key in IMPORTANT_SPECS:
+                    variant_perf_specs.add(f"{spec['key']}: {value}")
 
-            if variant_names:
-                text_parts.append(f"Variants: {', '.join(variant_names)}")
+        if variant_perf_specs:
+            text_parts.append("Performance features: " + ", ".join(variant_perf_specs))
 
-            # Extract unique specs from bestSpecifications in variants
-            variant_specs_set = set()
-            for v in variants:
-                best_specs = v.get("bestSpecifications")
-                if best_specs and isinstance(best_specs, list):
-                    for spec in best_specs:
-                        if isinstance(spec, dict):
-                            key = spec.get("key")
-                            value = spec.get("value")
-                            if key and value:
-                                variant_specs_set.add(f"{key}: {value}")
-            
-            if variant_specs_set:
-                text_parts.append(f"Variant Features: {', '.join(variant_specs_set)}")
-
-        # Fallback for top-level color if no variant colors were found
-        # (This handles the case where variants might be missing or didn't specify color)
-        if "color" in product_data and not any(v.get("color") for v in (variants or [])):
-             text_parts.append(f"Color: {product_data['color']}")
-
-        # Combine all text parts
         combined_text = " ".join(text_parts)
-        # Generate embedding
+
         return self.embed_text(combined_text)
 
     def get_embedding(self, text: str) -> np.ndarray:

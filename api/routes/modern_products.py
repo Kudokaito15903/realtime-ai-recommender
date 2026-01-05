@@ -17,7 +17,7 @@ sys.path.append(
 
 from data.schemas import BackendInfoResponse, ProductCreate
 from adapters.factory import (
-    get_event_processor,
+    get_product_event_processor,
     get_vector_store,
     get_product_store,
     get_backend_info,
@@ -28,7 +28,7 @@ from domain.embeddings.product_embeddings import get_embedding_model
 router = APIRouter()
 
 # Initialize services using the modern adapter pattern
-event_processor = get_event_processor()
+event_processor = get_product_event_processor()
 vector_store = get_vector_store()
 embedding_model = get_embedding_model()
 
@@ -219,8 +219,9 @@ async def create_product(product: ProductCreate):
         if event_processor:
             try:
                 event_data = {
-                    "product_id": product_id, 
+                    "entity_id": product_id,
                     "event_type": "create",
+                    "entity_type": "product",
                     "timestamp": time.time(),
                     "data": product_data,
                 }

@@ -15,18 +15,18 @@ BACKEND_TYPE = os.getenv("BACKEND_TYPE", "hybrid")
 # Component-specific backend selection
 VECTOR_STORE_TYPE = os.getenv(
     "VECTOR_STORE_TYPE", "pinecone"
-)  # redis, pinecone, qdrant, chroma, elasticsearch
-EVENT_PROCESSOR_TYPE = os.getenv(
-    "EVENT_PROCESSOR_TYPE", "postgres"
-)  # redis, supabase, nats, memory, postgres
+)  # redis, pinecone, qdrant, chroma
+
+EVENT_PROCESSOR_TYPE="kafka"
 DATA_STORE_TYPE = os.getenv(
     "DATA_STORE_TYPE", "postgres"
 )  # redis, supabase, postgresql, sqlite
 BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 
 # Kafka Configuration
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "product-events")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9094")
+KAFKA_PRODUCT_TOPIC = os.getenv("KAFKA_PRODUCT_TOPIC", "product-events")
+KAFKA_CONTENT_TOPIC = os.getenv("KAFKA_CONTENT_TOPIC", "content-events")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recommender-group")
 
 # ================================
@@ -182,6 +182,9 @@ HYBRID_WEIGHT_VECTOR = float(os.getenv("HYBRID_WEIGHT_VECTOR", 1.0))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", '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')
 OPENAI_MODEL= os.getenv("OPENAI_MODEL", 'google/gemma-3-27b-it:free')
 OPENAI_API_URL = os.getenv("OPENAI_API_URL", 'https://openrouter.ai/api/v1')
+
+# Content store
+CONTENT_STORE_TYPE = os.getenv("CONTENT_STORE_TYPE", "supabase")
 
 # Brand & Fine-tuning
 BRAND_PERSONALITY = os.getenv(

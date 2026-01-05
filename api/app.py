@@ -11,8 +11,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import API_HOST, API_PORT, DEBUG_MODE
 from api.routes import modern_products, recommend, chatbot, content
-# from services.product_event_handler import get_product_event_handler
-# from services.content_event_handler import get_content_event_handler
 
 # from api.middleware.logging import LoggingMiddleware
 
@@ -70,30 +68,3 @@ if __name__ == "__main__":
     uvicorn.run("api.app:app", host=API_HOST, port=API_PORT, reload=DEBUG_MODE)
 
 
-# Start background event handler when app starts
-
-
-# @app.on_event("startup")
-# async def startup_event():
-#     try:
-#         # Start product event handler
-#         product_handler = get_product_event_handler()
-#         product_handler.start()
-#         logger.info("Product event handler started on app startup")
-
-#         # Start content event handler
-#         content_handler = get_content_event_handler()
-#         content_handler.start()
-#         logger.info("Content event handler started on app startup")
-#     except Exception as e:
-#         logger.error(f"Failed to start event handlers on startup: {e}")
-
-
-# @app.on_event("shutdown")
-# async def shutdown_event():
-#     try:
-#         handler = get_product_event_handler()
-#         handler.stop()
-#         logger.info("Product event handler stopped on shutdown")
-#     except Exception as e:
-#         logger.error(f"Error stopping product event handler on shutdown: {e}")

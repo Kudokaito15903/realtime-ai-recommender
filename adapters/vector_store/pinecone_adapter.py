@@ -95,6 +95,34 @@ class PineconeVectorStore(VectorStoreInterface):
             logger.error(f"Error storing embedding for product {product_id}: {e}")
             return False
 
+    def store_content_embedding(
+        self,
+        content_id: str,
+        embedding: np.ndarray,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Store a content embedding in Pinecone"""
+        try:
+            # Prepare the vector data
+            vector_data = {
+                "id": content_id,
+                "values": embedding.tolist(),
+                "metadata": metadata or {},
+            }
+
+            # Add timestamp to metadata
+            vector_data["metadata"]["updated_at"] = time.time()
+
+            # Upsert to Pinecone (insert or update)
+            self.index.upsert(vectors=[vector_data])
+
+            logger.debug(f"Stored embedding for content {content_id} in Pinecone")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error storing embedding for content {content_id}: {e}")
+            return False
+
     def find_similar_products(
         self, embedding: np.ndarray, limit: int = 10, min_score: float = 0.75
     ) -> List[Dict[str, Any]]:
@@ -171,6 +199,17 @@ class PineconeVectorStore(VectorStoreInterface):
 
         except Exception as e:
             logger.error(f"Error deleting embedding for product {product_id}: {e}")
+            return False
+    
+    def delete_content_embedding(self, content_id: str) -> bool:
+        """Delete a content embedding from Pinecone"""
+        try:
+            self.index.delete(ids=[content_id])
+            logger.debug(f"Deleted embedding for content {content_id} from Pinecone")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error deleting embedding for content {content_id}: {e}")
             return False
 
     def clear_index(self) -> bool:

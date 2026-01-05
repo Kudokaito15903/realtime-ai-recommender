@@ -87,6 +87,17 @@ services:
     networks:
       - app-net
 
+  redis:
+    image: redis:7.2-alpine
+    container_name: realtime-ai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-net
+
 networks:
   app-net:
     driver: bridge
@@ -95,3 +106,4 @@ volumes:
   postgres_data:
   mongo_data:
   redpanda_data:
+  redis_data:

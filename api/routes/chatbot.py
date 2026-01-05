@@ -2,23 +2,23 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from services.chatbot_service import ChatbotService
-
+import time
 router = APIRouter()
 
 class ChatRequest(BaseModel):
     user_id: Optional[str] = None
     query: str
+    session_id: Optional[str] = None
     top_k: Optional[int] = 5
+
+session_id = f"eval_session_{int(time.time())}"
 
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
     try:
         svc = ChatbotService()
-        answer, contexts = await svc.answer(req.query, top_k=req.top_k)
-        
-        # Detect intent for response metadata
-        intent = svc._detect_intent(req.query)
+        answer, contexts, intent =  svc.answer(req.query, top_k=req.top_k, session_id=session_id)
         
         return {
             "answer": answer,

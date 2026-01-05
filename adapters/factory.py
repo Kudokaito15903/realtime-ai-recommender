@@ -24,9 +24,9 @@ def create_vector_store() -> VectorStoreInterface:
     raise ValueError(f"Unknown vector store type: {store_type}")
 
 
-def create_event_processor() -> EventProcessorInterface:
+def create_event_processor(topic: str = None, group_id: str = None, entity_type: str = "product") -> EventProcessorInterface:
     processor_type = config.EVENT_PROCESSOR_TYPE.lower()
-    logger.info(f"Creating event processor: {processor_type}")
+    logger.info(f"Creating event processor: {processor_type} (topic={topic})")
 
     if processor_type == "supabase":
         from adapters.database.supabase_adapter import get_supabase_event_processor
@@ -43,8 +43,9 @@ def create_event_processor() -> EventProcessorInterface:
 
         return KafkaEventProcessor(
             bootstrap_servers=config.KAFKA_BOOTSTRAP_SERVERS,
-            topic=config.KAFKA_TOPIC,
-            group_id=config.KAFKA_GROUP_ID,
+            topic=topic,
+            group_id=group_id,
+            entity_type=entity_type,
         )
 
     raise ValueError(f"Unknown event processor type: {processor_type}")
@@ -95,7 +96,7 @@ def create_user_behavior() -> UserBehaviorInterface:
 
 
 def create_content_store() -> ContentStoreInterface:
-    store_type = config.DATA_STORE_TYPE.lower()  # Reuse DATA_STORE_TYPE or add CONTENT_STORE_TYPE
+    store_type = config.CONTENT_STORE_TYPE.lower()  
     logger.info(f"Creating content store: {store_type}")
 
     if store_type == "supabase":
@@ -104,11 +105,10 @@ def create_content_store() -> ContentStoreInterface:
         return get_supabase_content_store()
 
     if store_type in ("postgres", "postgresql"):
-        from adapters.database.postgres_adapter import get_postgres_content_store
-
+        from adapters.database.postgres_content_adapter import get_postgres_content_store
+        logger.info("Postgres content store created")
         return get_postgres_content_store()
 
-    # Add other implementations if needed
     raise ValueError(f"Unknown content store type: {store_type}")
 
 
@@ -126,11 +126,34 @@ def get_vector_store() -> VectorStoreInterface:
     return _vector_store_instance
 
 
+_product_event_processor: EventProcessorInterface | None = None
+_content_event_processor: EventProcessorInterface | None = None
+
 def get_event_processor() -> EventProcessorInterface:
-    global _event_processor_instance
-    if _event_processor_instance is None:
-        _event_processor_instance = create_event_processor()
-    return _event_processor_instance
+    """Legacy getter for backward compatibility, returns product processor"""
+    return get_product_event_processor()
+
+
+def get_product_event_processor() -> EventProcessorInterface:
+    global _product_event_processor
+    if _product_event_processor is None:
+        _product_event_processor = create_event_processor(
+            topic=config.KAFKA_PRODUCT_TOPIC,
+            group_id="recommender-product-group",
+            entity_type="product",
+        )
+    return _product_event_processor
+
+
+def get_content_event_processor() -> EventProcessorInterface:
+    global _content_event_processor
+    if _content_event_processor is None:
+        _content_event_processor = create_event_processor(
+            topic=config.KAFKA_CONTENT_TOPIC,
+            group_id="recommender-content-group",
+            entity_type="content",
+        )
+    return _content_event_processor
 
 
 def get_product_store() -> ProductStoreInterface:
@@ -155,10 +178,11 @@ def get_content_store() -> ContentStoreInterface:
 
 
 def reset_instances() -> None:
-    global _vector_store_instance, _event_processor_instance, _product_store_instance, _user_behavior_instance, _content_store_instance
+    global _vector_store_instance, _product_event_processor, _content_event_processor, _product_store_instance, _user_behavior_instance, _content_store_instance
 
     _vector_store_instance = None
-    _event_processor_instance = None
+    _product_event_processor = None
+    _content_event_processor = None
     _product_store_instance = None
     _user_behavior_instance = None
     _content_store_instance = None

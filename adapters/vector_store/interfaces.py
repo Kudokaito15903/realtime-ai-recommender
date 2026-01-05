@@ -20,6 +20,16 @@ class VectorStoreInterface(ABC):
     ) -> bool:
         """Store a product embedding with optional metadata"""
         pass
+    
+    @abstractmethod
+    def store_content_embedding(
+        self,
+        content_id: str,
+        embedding: np.ndarray,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Store a product embedding with optional metadata"""
+        pass
 
     @abstractmethod
     def find_similar_products(
@@ -36,6 +46,11 @@ class VectorStoreInterface(ABC):
     @abstractmethod
     def delete_product_embedding(self, product_id: str) -> bool:
         """Delete a product embedding"""
+        pass
+
+    @abstractmethod
+    def delete_content_embedding(self, content_id: str) -> bool:
+        """Delete a content embedding"""
         pass
 
 

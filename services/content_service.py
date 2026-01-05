@@ -9,13 +9,13 @@ import uuid
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
-from adapters.factory import get_event_processor, get_content_store
+from adapters.factory import get_content_event_processor, get_content_store
 from domain.embeddings.product_embeddings import get_embedding_model
 
 
 class ContentService:
     def __init__(self):
-        self.event_processor = get_event_processor()
+        self.event_processor = get_content_event_processor()
         self.content_store = get_content_store()
         self.embedding_model = get_embedding_model()
 
@@ -32,8 +32,8 @@ class ContentService:
         # Publish event for embedding update
         if self.event_processor:
             event_data = {
-                "content_id": content_id,
                 "event_type": "create",
+                'entity_type': 'content',
                 "timestamp": time.time(),
                 "data": content_data,
             }
@@ -48,10 +48,11 @@ class ContentService:
     def update_content(self, content_id: str, update_data: Dict[str, Any]) -> bool:
         update_data["updated_at"] = time.time()
         ok = self.content_store.update_content(content_id, update_data)
+        update_data["id"] = content_id
         if ok and self.event_processor:
             event_data = {
-                "content_id": content_id,
                 "event_type": "update",
+                "entity_type": "content",
                 "timestamp": time.time(),
                 "data": update_data,
             }

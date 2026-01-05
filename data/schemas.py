@@ -107,17 +107,7 @@ class Product(ProductBase):
     created_at: datetime
     updated_at: datetime
     embedding_updated_at: Optional[datetime] = None
-
-
-class ProductEvent(BaseModel):
-    """Model for product event in the stream"""
-
-    id: str
-    event_type: str  # "create", "update", "delete"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    data: Union[ProductCreate, ProductUpdate, Dict[str, Any]]
-
-
+    
 class SimilarProductResult(BaseModel):
     """Model for similar product search result"""
 
@@ -154,6 +144,47 @@ class ProductRecommendation(BaseModel):
     )
 
 
+class ContentCreate(BaseModel):
+    title: str
+    content: str
+    category: str  # e.g., 'faq', 'policy', 'guide', 'blog', 'cskh'
+    tags: Optional[List[str]] = []
+    status: Optional[str] = "published"  # 'draft', 'published', 'archived'
+
+
+class ContentUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    status: Optional[str] = None
+
+class ContentResponse(BaseModel):
+    content_id: str = Field(alias="id")
+    title: str
+    content: str
+    category: Optional[str]
+    status: str
+
+
+class ContentStatusResponse(BaseModel):
+    content_id: str
+    status: str
+
+
+class ContentListResponse(BaseModel):
+    items: List[ContentResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+
+
+class ContentSearchResponse(BaseModel):
+    query: str
+    results: List[ContentResponse]
+    count: int
+ 
 class RecommendationResponse(BaseModel):
     """Model for recommendation API response"""
 

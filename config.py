@@ -15,7 +15,7 @@ BACKEND_TYPE = os.getenv("BACKEND_TYPE", "hybrid")
 # Component-specific backend selection
 VECTOR_STORE_TYPE = os.getenv(
     "VECTOR_STORE_TYPE", "pinecone"
-)  # redis, pinecone, qdrant, chroma
+)  # redis, pinecone, qdrant, chroma, elasticsearch
 EVENT_PROCESSOR_TYPE = os.getenv(
     "EVENT_PROCESSOR_TYPE", "postgres"
 )  # redis, supabase, nats, memory, postgres
@@ -37,6 +37,11 @@ KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recommender-group")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "product-recommendations")
+
+# Elasticsearch Configuration
+ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+ELASTICSEARCH_API_KEY = os.getenv("ELASTICSEARCH_API_KEY")
+ELASTICSEARCH_INDEX_NAME = os.getenv("ELASTICSEARCH_INDEX_NAME", "product-recommendations")
 
 # Supabase Configuration (optional, kept for backward compatibility)
 SUPABASE_URL = os.getenv("SUPABASE_URL")

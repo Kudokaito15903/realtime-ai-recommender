@@ -14,7 +14,8 @@ kafka-python
 # Machine Learning và embedding dependencies
 numpy
 scipy
-pinecone
+pinecone-client>=3.0.0
+elasticsearch>=8.0.0
 supabase
 implicit
 scikit-learn

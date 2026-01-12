@@ -21,6 +21,11 @@ def create_vector_store() -> VectorStoreInterface:
 
         return get_pinecone_vector_store()
 
+    if store_type == "elasticsearch":
+        from adapters.vector_store.elasticsearch_adapter import get_elasticsearch_vector_store
+
+        return get_elasticsearch_vector_store()
+
     raise ValueError(f"Unknown vector store type: {store_type}")
 
 
@@ -171,6 +176,7 @@ def get_backend_info() -> Dict:
         "backend_type": config.BACKEND_TYPE,
         "cloud_services": {
             "pinecone_configured": bool(config.PINECONE_API_KEY),
+            "elasticsearch_configured": bool(config.ELASTICSEARCH_URL),
             "supabase_configured": bool(
                 config.SUPABASE_URL and config.SUPABASE_SERVICE_ROLE_KEY
             ),

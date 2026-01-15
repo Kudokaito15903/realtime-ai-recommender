@@ -178,7 +178,7 @@ class ContentListResponse(BaseModel):
     items: List[ContentResponse]
     total: int
     limit: int
-    offset: int
+    page: int
     has_more: bool
 
 

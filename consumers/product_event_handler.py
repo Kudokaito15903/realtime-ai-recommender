@@ -44,13 +44,13 @@ class ProductEventHandler:
     # Event handler (CRITICAL)
     # ------------------------------------------------------------------
     def _handle_event(self, event: Dict[str, Any]) -> None:
-        if event.get("entity_type") != "product":
+        if event.get("entityType") != "PRODUCT":
             return
 
-        event_type = event.get("event_type")
-        product_id = event.get("entity_id")
+        event_type = event.get("eventType")
+        product_id = event.get("id") or event.get("product_id")
         timestamp = event.get("timestamp")
-        data = event.get("data")
+        data = event
 
         if not event_type or not product_id:
             # Try to recover from data (backwards compatibility)
@@ -68,10 +68,10 @@ class ProductEventHandler:
         )
 
         try:
-            if event_type in ("create", "update"):
+            if event_type in ("CREATED", "UPDATED", "upsert"):
                 self._process_upsert(product_id, data)
 
-            elif event_type == "delete":
+            elif event_type == "DELETED":
                 self._process_delete(product_id)
 
             else:
@@ -118,10 +118,9 @@ class ProductEventHandler:
 
     def _build_metadata(self, data: dict) -> dict:
         identity = {
-            "product_id": data.get("sku"),
+            "product_id": data.get("id"),
             "name": data.get("name"),
-            "brand": data.get("brandName"),
-            "sku": data.get("sku"),
+            "brand": data.get("brand"),
             "type": "product",
         }
 

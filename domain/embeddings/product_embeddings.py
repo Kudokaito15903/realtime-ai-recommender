@@ -109,11 +109,11 @@ class ProductEmbeddingModel:
         if product_data.get("description"):
             text_parts.append(str(product_data["description"]))
 
-        if product_data.get("brandName"):
-            text_parts.append(f"Brand: {product_data['brandName']}")
+        if product_data.get("brand"):
+            text_parts.append(f"Brand: {product_data['brand']}")
 
         # Category information
-        category_id = product_data.get("categoryId")
+        category_id = product_data.get("categoriesId")
         if category_id:
             if isinstance(category_id, list):
                 text_parts.append(f"Categories: {', '.join(category_id)}")

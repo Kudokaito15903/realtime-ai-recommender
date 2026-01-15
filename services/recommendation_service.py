@@ -619,14 +619,15 @@ class RecommendationService:
             logger.warning(f"ALS recommendations failed: {e}")
 
         # 3. Call session recommender
-        try:
-            session_recs = self.get_session_based_recommendations(
-                user_id=user_id, limit=max(limit, 20)
-            )
-            candidates.extend(session_recs)
-            logger.debug(f"Session recommender returned {len(session_recs)} candidates")
-        except Exception as e:
-            logger.warning(f"Session recommendations failed: {e}")
+        # 3. Call session recommender
+        # try:
+        #     session_recs = self.get_session_based_recommendations(
+        #         user_id=user_id, limit=max(limit, 20)
+        #     )
+        #     candidates.extend(session_recs)
+        #     logger.debug(f"Session recommender returned {len(session_recs)} candidates")
+        # except Exception as e:
+        #     logger.warning(f"Session recommendations failed: {e}")
 
         # 4. Call embedding recommender
         try:

@@ -1,157 +1,47 @@
-# import os
-# import sys
-# import time
-# from typing import Optional
+import datetime
+import time
+import sys
+import os
+from loguru import logger
 
-# from loguru import logger
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# # Ensure project root is on sys.path
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from offline.als.train_als import train_als_offline
 
-# from adapters.factory import get_user_behavior, get_product_store
-# from domain.recommenders.als_recommender import ALSSettings, train_implicit_als, save_als_model
-# from offline.als.interaction_features import (
-#     apply_temporal_weighting,
-#     add_frequency_features,
-#     add_category_features,
-#     apply_interaction_type_weighting,
-# )
-# from config import (
-#     ALS_MODEL_PATH,
-#     ALS_FACTORS,
-#     ALS_ITERATIONS,
-#     ALS_REGULARIZATION,
-#     ALS_ALPHA,
-#     ALS_TRAINING_INTERACTIONS_LIMIT,
-#     ALS_DATA_QUALITY_ENABLED,
-#     ALS_REMOVE_DUPLICATES,
-#     ALS_REMOVE_OUTLIERS,
-#     ALS_OUTLIER_THRESHOLD_STD,
-#     ALS_REMOVE_STALE,
-#     ALS_MAX_AGE_DAYS,
-#     ALS_REMOVE_COLD_START,
-#     ALS_MIN_USER_INTERACTIONS,
-#     ALS_MIN_PRODUCT_INTERACTIONS,
-#     ALS_NORMALIZATION_METHOD,
-#     ALS_TEMPORAL_WEIGHTING_ENABLED,
-#     ALS_RECENCY_HALF_LIFE_DAYS,
-# )
+def run_scheduler():
+    """
+    Simple scheduler to run ALS training daily at 2:00 AM.
+    """
+    logger.info("ALS Training Scheduler started")
+    
+    while True:
+        now = datetime.datetime.now()
+        
+        # Calculate next run time (today at 2:00 AM)
+        next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        
+        # If today 2:00 AM has passed, schedule for tomorrow 2:00 AM
+        if now >= next_run:
+            next_run += datetime.timedelta(days=1)
+            
+        wait_seconds = (next_run - now).total_seconds()
+        
+        logger.info(f"Next ALS training scheduled for {next_run} (in {wait_seconds/3600:.2f} hours)")
+        
+        # Sleep until scheduled time
+        time.sleep(wait_seconds)
+        
+        # Run training
+        try:
+            logger.info("Starting scheduled ALS training...")
+            train_als_offline()
+            logger.info("Scheduled ALS training completed successfully")
+        except Exception as e:
+            logger.error(f"Scheduled ALS training failed: {e}")
+            
+        # Sleep a bit to avoid double execution if clock skews (though next loop handles it)
+        time.sleep(60)
 
-
-# def train_als_offline(
-#     interactions_limit: Optional[int] = None,
-# ) -> None:
-#     """
-#     Offline training entrypoint for the implicit ALS model.
-
-#     Typical usage:
-#     - Run once per day (e.g. 2AM) from a scheduler/cron.
-#     - Reads aggregated interaction counts from the behavior store.
-#     - Trains ALS and saves the model artifact to ALS_MODEL_PATH.
-#     """
-#     behavior = get_user_behavior()
-
-#     if not hasattr(behavior, "get_interaction_counts"):
-#         logger.warning(
-#             "User behavior backend does not implement get_interaction_counts; "
-#             "offline ALS training is unavailable."
-#         )
-#         return
-
-#     limit = interactions_limit or ALS_TRAINING_INTERACTIONS_LIMIT
-#     logger.info(f"Starting offline ALS training (limit={limit})")
-
-#     interactions = behavior.get_interaction_counts(limit=limit)
-#     if not interactions:
-#         logger.warning("No interactions returned for ALS training; skipping.")
-#         return
-
-#     # Apply feature engineering (temporal weighting, frequency, category, interaction type)
-#     if ALS_TEMPORAL_WEIGHTING_ENABLED:
-#         try:
-#             interactions = apply_temporal_weighting(
-#                 interactions,
-#                 half_life_days=ALS_RECENCY_HALF_LIFE_DAYS,
-#                 timestamp_key="timestamp",
-#             )
-#         except Exception as e:
-#             logger.warning(f"Temporal weighting failed: {e}")
-
-#     # Frequency features
-#     try:
-#         interactions = add_frequency_features(interactions)
-#     except Exception as e:
-#         logger.warning(f"Frequency features failed: {e}")
-
-#     # Category features
-#     try:
-#         product_store = get_product_store()
-#         interactions = add_category_features(interactions, product_store=product_store)
-#     except Exception as e:
-#         logger.debug(f"Category features not available: {e}")
-
-#     # Interaction type weighting (if available)
-#     try:
-#         interactions = apply_interaction_type_weighting(interactions)
-#     except Exception as e:
-#         logger.debug(f"Interaction type weighting not available: {e}")
-
-#     # Prepare data quality config
-#     data_quality_config = {
-#         "remove_duplicates": ALS_REMOVE_DUPLICATES,
-#         "remove_outliers": ALS_REMOVE_OUTLIERS,
-#         "outlier_threshold_std": ALS_OUTLIER_THRESHOLD_STD,
-#         "remove_stale": ALS_REMOVE_STALE,
-#         "max_age_days": ALS_MAX_AGE_DAYS,
-#         "remove_cold_start": ALS_REMOVE_COLD_START,
-#         "min_user_interactions": ALS_MIN_USER_INTERACTIONS,
-#         "min_product_interactions": ALS_MIN_PRODUCT_INTERACTIONS,
-#         "timestamp_key": "timestamp" if ALS_TEMPORAL_WEIGHTING_ENABLED else None,
-#     }
-
-#     settings = ALSSettings(
-#         factors=ALS_FACTORS,
-#         iterations=ALS_ITERATIONS,
-#         regularization=ALS_REGULARIZATION,
-#         alpha=ALS_ALPHA,
-#     )
-
-#     start_time = time.time()
-#     model, _ = train_implicit_als(
-#         interactions,
-#         settings=settings,
-#         apply_data_quality=ALS_DATA_QUALITY_ENABLED,
-#         apply_normalization=True,
-#         normalization_method=ALS_NORMALIZATION_METHOD,
-#         data_quality_config=data_quality_config,
-#     )
-#     save_als_model(model, ALS_MODEL_PATH)
-
-#     logger.info(
-#         f"Offline ALS training completed in {time.time() - start_time:.2f}s. "
-#         f"Model saved to {ALS_MODEL_PATH} (trained_at={model.trained_at:.0f})."
-#     )
-
-
-# if __name__ == "__main__":
-#     import argparse
-
-#     parser = argparse.ArgumentParser(description="Offline ALS model trainer")
-#     parser.add_argument(
-#         "--limit",
-#         type=int,
-#         default=None,
-#         help=(
-#             "Maximum number of aggregated interactions to use for training. "
-#             "Defaults to ALS_TRAINING_INTERACTIONS_LIMIT from config."
-#         ),
-#     )
-#     args = parser.parse_args()
-
-#     train_als_offline(interactions_limit=args.limit)
-
-#     # Example scheduler (cron) usage on Linux:
-#     #   0 2 * * * /usr/bin/python -m services.model_trainer >> /var/log/als_trainer.log 2>&1
-#     #
-#     # On Windows Task Scheduler, configure a daily task at 2AM that runs:
-#     #   python -m services.model_trainer
+if __name__ == "__main__":
+    run_scheduler()

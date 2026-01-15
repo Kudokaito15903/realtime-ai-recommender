@@ -297,11 +297,13 @@ class ChatbotService:
                     if turn.contexts:
                         for ctx in turn.contexts:
                             if ctx.get('type') == 'product':
-                                product_name = ctx.get('data', {}).get('name')
-                                if product_name:
-                                    resolved = query.replace(pronoun, product_name)
-                                    logger.info(f"Resolved '{pronoun}' to '{product_name}'")
-                                    return resolved
+                                data = ctx.get('data')
+                                if data:  # Safety check for None
+                                    product_name = data.get('name')
+                                    if product_name:
+                                        resolved = query.replace(pronoun, product_name)
+                                        logger.info(f"Resolved '{pronoun}' to '{product_name}'")
+                                        return resolved
         
         return query
     
@@ -539,6 +541,96 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
         
         return filtered[:top_k]
     
+    def _extract_product_info(self, data: Dict, metadata: Dict) -> Dict[str, Any]:
+        """
+        Extract comprehensive product information from data and metadata.
+        Handles both flat structure and JSON string metadata fields.
+        
+        Args:
+            data: Product data from database
+            metadata: Product metadata from vector store
+            
+        Returns:
+            Dict containing all extracted product information
+        """
+        import json
+        
+        info = {
+            'name': data.get('name', 'N/A'),
+            'price': data.get('price'),
+            'rating': data.get('avgRating') or data.get('avg_rating'),
+            'brand': None,
+            'description': data.get('description'),
+            'material': None,
+            'gender': None,
+            'category': None,
+            'in_stock': True,
+            'list_price': None,
+            'variants': []
+        }
+        
+        # Helper to safely parse JSON strings
+        def safe_json_parse(json_str):
+            if not json_str:
+                return None
+            if isinstance(json_str, dict):
+                return json_str
+            if isinstance(json_str, str):
+                try:
+                    return json.loads(json_str)
+                except:
+                    return None
+            return None
+        
+        # Parse attributes (can be in data or metadata)
+        attributes_str = data.get('attributes') or metadata.get('attributes')
+        attributes = safe_json_parse(attributes_str)
+        if attributes:
+            general = attributes.get('general', {})
+            info['brand'] = general.get('brand')
+            info['gender'] = general.get('gender')
+            
+            material_info = attributes.get('material', {})
+            info['material'] = material_info.get('material')
+        
+        # Parse commercial info
+        commercial_str = data.get('commercial') or metadata.get('commercial')
+        commercial = safe_json_parse(commercial_str)
+        if commercial:
+            info['in_stock'] = commercial.get('in_stock', True)
+            info['list_price'] = commercial.get('list_price')
+            if not info['price']:
+                info['price'] = commercial.get('price')
+        
+        # Parse taxonomy
+        taxonomy_str = data.get('taxonomy') or metadata.get('taxonomy')
+        taxonomy = safe_json_parse(taxonomy_str)
+        if taxonomy:
+            info['category'] = taxonomy.get('category')
+        
+        # Parse variants
+        variants_str = data.get('variants') or metadata.get('variants')
+        variants = safe_json_parse(variants_str)
+        if variants and isinstance(variants, list):
+            info['variants'] = variants
+        
+        # Parse AI metadata for description if not already set
+        if not info['description']:
+            ai_str = data.get('ai') or metadata.get('ai')
+            ai_meta = safe_json_parse(ai_str)
+            if ai_meta:
+                embedding_text = ai_meta.get('embedding_text', '')
+                # Try to extract description from embedding_text
+                if 'designed for' in embedding_text.lower() or 'features' in embedding_text.lower():
+                    # Extract the descriptive part
+                    parts = embedding_text.split('.')
+                    for part in parts:
+                        if any(kw in part.lower() for kw in ['designed', 'features', 'perfect for']):
+                            info['description'] = part.strip() + '.'
+                            break
+        
+        return info
+    
     def _build_enhanced_prompt(
         self,
         query: str,
@@ -556,15 +648,69 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
             
             # Case 1: Product Data
             if entity_type == "product" and data:
-                name = data.get("name", "N/A")
-                price = data.get("price")
-                rating = data.get("avgRating")
+                # Use comprehensive product info extraction
+                product = self._extract_product_info(data, metadata)
                 
+                name = product['name']
                 text = f"[Sản phẩm {i+1}] {name}"
-                if price:
-                    text += f"\n- Giá: {price:,.0f}đ"
-                if rating:
-                    text += f"\n- Đánh giá: {rating}/5"
+                
+                # Add brand
+                if product['brand']:
+                    text += f"\n- Thương hiệu: {product['brand']}"
+                
+                # Add category
+                if product['category']:
+                    text += f"\n- Danh mục: {product['category']}"
+                
+                # Add price information
+                if product['price']:
+                    text += f"\n- Giá: {product['price']:,.0f}đ"
+                    if product['list_price'] and product['list_price'] > product['price']:
+                        text += f" (Giá gốc: {product['list_price']:,.0f}đ)"
+                
+                # Add rating
+                if product['rating']:
+                    text += f"\n- Đánh giá: {product['rating']}/5 sao"
+                
+                # Add material
+                if product['material']:
+                    text += f"\n- Chất liệu: {product['material']}"
+                
+                # Add gender
+                if product['gender']:
+                    text += f"\n- Dành cho: {product['gender']}"
+                
+                # Add stock status
+                stock_text = "Còn hàng" if product['in_stock'] else "Hết hàng"
+                text += f"\n- Tình trạng: {stock_text}"
+                
+                # Add description
+                if product['description']:
+                    # Limit description length
+                    desc = product['description']
+                    if len(desc) > 200:
+                        desc = desc[:200] + "..."
+                    text += f"\n- Mô tả: {desc}"
+                
+                # Add variants if available
+                if product['variants']:
+                    text += f"\n- Biến thể ({len(product['variants'])}):"
+                    for variant in product['variants'][:3]:  # Limit to 3 variants
+                        v_name = variant.get('name', '')
+                        v_color = variant.get('color', '')
+                        v_price = variant.get('price')
+                        v_sku = variant.get('sku', '')
+                        
+                        v_text = f"\n  • {v_name}" if v_name else f"\n  • SKU: {v_sku}"
+                        if v_color:
+                            v_text += f" (Màu: {v_color})"
+                        if v_price:
+                            v_text += f" - {v_price:,.0f}đ"
+                        text += v_text
+                    
+                    if len(product['variants']) > 3:
+                        text += f"\n  ... và {len(product['variants']) - 3} biến thể khác"
+                
                 context_texts.append(text)
             
             # Case 2: Content/Policy Data (often in metadata)
@@ -575,6 +721,7 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
                 context_texts.append(text)
         
         contexts_combined = "\n\n".join(context_texts) if context_texts else "Không có thông tin."
+
         
         system_instructions = self._get_system_instructions(intent)
         

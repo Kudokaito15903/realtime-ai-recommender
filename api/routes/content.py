@@ -34,28 +34,28 @@ async def create_content(content: ContentCreate):
 async def list_content(
     category: Optional[str] = Query(None),
     limit: int = Query(100, ge=1),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
 ):
     try:
         svc = ContentService()
-        results = svc.list_content(
+        results, total = svc.list_content(
             category=category,
             limit=limit,
-            offset=offset,
+            page=page,
             search=search,
             status=status,
         )
 
-        total = len(results)
+        has_more = (page * limit) < total
 
         return {
             "items": results,
             "total": total,
             "limit": limit,
-            "offset": offset,
-            "has_more": total == limit,
+            "page": page,
+            "has_more": has_more,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

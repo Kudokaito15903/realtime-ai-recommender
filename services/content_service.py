@@ -71,38 +71,41 @@ class ContentService:
         return ok
 
     def list_content(
-        self, 
-        category: Optional[str] = None, 
+        self,
+        category: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0,
+        page: int = 1,
         search: Optional[str] = None,
         status: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> (List[Dict[str, Any]], int):
         """
-        List content with filtering, pagination, and search.
+        List content with filtering, pagination, and search. Returns (results, total)
         """
-        # If search is provided, use vector search
-        if search:
-            return self.search_content(query=search, category=category, limit=limit)
-        
-        # Otherwise, use regular list with filters
-        results = self.content_store.list_content(
-            category=category, 
-            limit=limit, 
+        offset = (page - 1) * limit
+        all_results = self.content_store.list_content(
+            category=category,
+            limit=limit,
             offset=offset,
             status=status
         )
-        
+        # Get total count (inefficient, but for demo)
+        total_results = self.content_store.list_content(
+            category=category,
+            limit=100000,
+            offset=0,
+            status=status
+        )
+        total = len(total_results)
         # Filter by search term if provided (text search fallback)
         if search:
             search_lower = search.lower()
-            results = [
-                item for item in results
+            all_results = [
+                item for item in all_results
                 if search_lower in item.get("title", "").lower() or 
                    search_lower in item.get("content", "").lower()
             ]
-        
-        return results
+            total = len(all_results)
+        return all_results, total
 
     def search_content(
         self, 

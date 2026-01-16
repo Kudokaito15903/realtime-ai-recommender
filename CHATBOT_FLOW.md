@@ -1,563 +1,178 @@
-# Luồng Hoạt Động Chatbot AI
+# Luồng Hoạt Động Chatbot AI (Updated)
 
 ## Tổng Quan
 
-Chatbot sử dụng kiến trúc RAG (Retrieval Augmented Generation) với khả năng phân loại intent tự động và xử lý 5 loại câu hỏi chính:
-- **Thông tin sản phẩm**: Trả lời chi tiết về sản phẩm
-- **So sánh sản phẩm**: So sánh nhiều sản phẩm với nhau
-- **Chính sách**: Thông tin về chính sách đổi trả, bảo hành, vận chuyển
-- **CSKH tự động**: Chăm sóc khách hàng tự động
-- **Dữ liệu realtime**: Tồn kho, giá cả, đánh giá cập nhật
+Chatbot sử dụng kiến trúc RAG (Retrieval Augmented Generation) tiên tiến với Google GenAI (Gemini 2.0 Flash). Hệ thống được tối ưu hóa cho độ chính xác cao, khả năng tự sửa lỗi và xử lý linh hoạt các tình huống phức tạp.
+
+**Capabilities:**
+- **Thông tin sản phẩm**: Trả lời chi tiết, so sánh, thông số kỹ thuật.
+- **Chính sách**: Giải thích rõ ràng quy định đổi trả, thanh toán, vận chuyển (liệt kê đầy đủ).
+- **CSKH**: Hỗ trợ tự động, cung cấp thông tin liên hệ.
+- **Realtime**: Kiểm tra tồn kho và giá bán theo thời gian thực.
 
 ---
 
-## 1. Luồng Tổng Quan
+## 1. Kiến Trúc Tổng Quan
 
-```
-┌─────────────┐
-│   User      │
-│  (Frontend) │
-└──────┬──────┘
-       │ POST /chatbot/chat
-       │ {query: "iPhone 15 giá bao nhiêu?"}
-       ▼
-┌─────────────────────────────────────┐
-│      FastAPI Router                  │
-│      /api/routes/chatbot.py         │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│    ChatbotService                    │
-│    services/chatbot_service.py       │
-│                                      │
-│  1. _detect_intent(query)           │
-│  2. Route to handler                │
-│  3. Retrieve data                   │
-│  4. Generate response                │
-└──────────────┬──────────────────────┘
-               │
-       ┌───────┴───────┐
-       │               │
-       ▼               ▼
-┌─────────────┐  ┌─────────────┐
-│ Vector Store│  │Product Store│
-│ (Pinecone)  │  │ (Supabase)  │
-└─────────────┘  └─────────────┘
-       │               │
-       └───────┬───────┘
-               ▼
-┌─────────────────────────────────────┐
-│    OpenAI API                        │
-│    (GPT-4o-mini)                     │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│    Response                         │
-│    {                                │
-│      answer: "...",                 │
-│      contexts: [...],              │
-│      intent: "product_info"         │
-│    }                                │
-└─────────────────────────────────────┘
+```mermaid
+graph TD
+    User[User (Frontend)] -->|POST /chat| API[FastAPI Router]
+    API --> Service[ChatbotService]
+    
+    subgraph "Chatbot Processing Pipeline"
+        Service --> Security[SecurityUtils<br/>(Sanitize & Input Validation)]
+        Security --> Coref[Coreference Resolution<br/>(Understand context)]
+        Coref --> Intent[Intent Detection<br/>(LLM + Fallback)]
+        Intent -->|Query| Retrieval[Data Retrieval]
+        
+        Retrieval -->|Candidates| Rerank[Context Reranking<br/>(LLM Based)]
+        Rerank -->|Top K| Prompt[Dynamic Prompt Builder]
+        Prompt -->|Context + Instructions| LLM[Google GenAI<br/>(Gemini 2.0 Flash)]
+    end
+    
+    subgraph "Data & Caching"
+        Retrieval <--> Redis[(Redis Cache)]
+        Retrieval <--> VectorDB[(Pinecone/Vector Store)]
+        Retrieval <--> DB[(Supabase/Postgres)]
+    end
+    
+    LLM --> Response[Response Generation]
+    Response --> User
 ```
 
 ---
 
-## 2. Luồng Chi Tiết: Intent Detection & Routing
+## 2. Luồng Xử Lý Chi Tiết
 
-```
-User Query: "So sánh iPhone 15 và Samsung S24"
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│  _detect_intent(query)                  │
-│                                          │
-│  Keywords Analysis:                     │
-│  - "so sánh" → compare                  │
-│  - "thông tin" → product_info          │
-│  - "chính sách" → policy               │
-│  - "hỗ trợ" → cskh                     │
-│  - "còn hàng" → realtime               │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-        Intent: "compare"
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│  compare_products(query, top_k=5)        │
-│                                          │
-│  1. retrieve(query) - Vector search     │
-│  2. Get product details                 │
-│  3. Extract comparison data             │
-│  4. Build comparison prompt             │
-│  5. Call OpenAI                         │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-         Response
-```
+### A. Intent Detection (Phân Loại Ý Định)
+Hệ thống sử dụng LLM để phân tích ý định người dùng thay vì chỉ dựa vào từ khóa, giúp hiểu ngữ cảnh tốt hơn.
+
+1.  **Input**: Câu hỏi thô của người dùng.
+2.  **Coreference Resolution**: Thay thế đại từ (nó, cái đó, sản phẩm này) bằng tên sản phẩm được nhắc đến trước đó.
+3.  **LLM Classification**: Gửi prompt yêu cầu trả về JSON định dạng chuẩn.
+    -   *Logic xử lý lỗi*: Tự động sửa lỗi JSON (re-parsing) nếu LLM trả về format sai (preambles, markdown).
+4.  **Fallback**: Nếu LLM thất bại, chuyển sang rule-based (keyword matching).
+
+**Các Intent chính:**
+-   `product_search`: Tìm kiếm sản phẩm
+-   `product_info`: Hỏi thông tin chi tiết
+-   `compare`: So sánh sản phẩm
+-   `policy`: Chính sách (Thanh toán, Đổi trả, Vận chuyển...)
+-   `support`: Hỗ trợ/Liên hệ
+-   `stock_check`: Kiểm tra tồn kho
+
+### B. Retrieval & Reranking (Truy Xuất & Sắp Xếp)
+1.  **Hybrid Search**: Kết hợp tìm kiếm vector (semantic) và keyword.
+2.  **Product & Content Handling**:
+    -   *Product*: Lấy thông tin giá, thông số, biến thể.
+    -   *Content (Policy)*: **Quan trọng** - Lấy toàn bộ nội dung từ metadata nếu field `data` null (Xử lý đặc biệt cho chính sách).
+3.  **Reranking**: Sử dụng LLM để chấm điểm độ liên quan của các context tìm được với câu hỏi, lọc bỏ thông tin nhiễu.
+
+### C. Prompt Engineering (Tạo Prompt Động)
+Hệ thống xây dựng prompt động dựa trên Intent:
+
+-   **Dynamic System Instructions**: Vai trò của bot thay đổi tùy intent (Chuyên gia sản phẩm vs Chuyên viên chính sách).
+-   **Formatting Guides**:
+    -   *Policy*: Yêu cầu liệt kê đầy đủ, dùng numbered list, không bỏ sót chi tiết (số tài khoản, hotline).
+    -   *Compare*: Yêu cầu bảng so sánh hoặc bullet points.
+    -   *Product Info*: Ngắn gọn, tập trung vào thông số chính.
+-   **Context Injection**: Chèn thông tin đã được rerank vào prompt.
 
 ---
 
-## 3. Luồng Chi Tiết: Product Information
+## 3. Data Flow Diagram
 
 ```
-User: "Thông tin iPhone 15 Pro"
+User Query "Bên mình có những phương thức thanh toán nào?"
        │
        ▼
 ┌─────────────────────────────────────────┐
-│  get_product_info(query, top_k=3)       │
-│                                          │
-│  Step 1: Vector Search                  │
-│  ├── Embed query: "iPhone 15 Pro"       │
-│  ├── Search Pinecone                    │
-│  └── Get top 3 similar products         │
-│                                          │
-│  Step 2: Enrich Product Data            │
-│  ├── For each product:                  │
-│  │   ├── Get from Product Store         │
-│  │   ├── Extract: name, price, rating   │
-│  │   ├── Get variants (color, storage) │
-│  │   └── Get specifications            │
-│  └── Build product_details[]            │
-│                                          │
-│  Step 3: Build Prompt                    │
-│  ├── Format product info                 │
-│  ├── Include variants & specs           │
-│  └── Add user query                     │
-│                                          │
-│  Step 4: Generate Response              │
-│  └── Call OpenAI API                    │
+│  1. Security & Coreference              │
+│  - Sanitize input                       │
+│  - "nó" -> "iPhone 15" (nếu có context) │
 └──────────────┬──────────────────────────┘
                │
                ▼
-    Detailed Product Info Response
-```
-
----
-
-## 4. Luồng Chi Tiết: Product Comparison
-
-```
-User: "So sánh iPhone 15 và Samsung S24"
-       │
-       ▼
 ┌─────────────────────────────────────────┐
-│  compare_products(query, top_k=5)       │
-│                                          │
-│  Step 1: Retrieve Products               │
-│  ├── Vector search for "iPhone 15"      │
-│  ├── Vector search for "Samsung S24"    │
-│  └── Get top 5 candidates               │
-│                                          │
-│  Step 2: Extract Comparison Data        │
-│  For each product:                      │
-│  ├── Price (min/max if variants)        │
-│  ├── Rating & sold count                │
-│  ├── Brand & category                    │
-│  ├── Key specifications                  │
-│  └── Description                         │
-│                                          │
-│  Step 3: Build Comparison Table         │
-│  ├── Format side-by-side                │
-│  ├── Highlight differences              │
-│  └── Prepare for LLM                    │
-│                                          │
-│  Step 4: Generate Comparison            │
-│  └── OpenAI analyzes & compares         │
+│  2. Intent Detection (LLM)              │
+│  - Output: Intent("policy", "payment")  │
 └──────────────┬──────────────────────────┘
                │
                ▼
-    Comparison Response with Recommendations
-```
-
----
-
-## 5. Luồng Chi Tiết: Policy Information
-
-```
-User: "Chính sách đổi trả hàng"
-       │
-       ▼
 ┌─────────────────────────────────────────┐
-│  get_policy_info(query, top_k=5)        │
-│                                          │
-│  Step 1: Search Policy Content          │
-│  ├── Vector search (content type)        │
-│  ├── Filter by category="policy"        │
-│  └── Get relevant policies               │
-│                                          │
-│  Step 2: Fallback to Content Store       │
-│  ├── If no vector results:              │
-│  │   ├── Query Content Store            │
-│  │   └── Filter category="policy"       │
-│  └── Get policy documents                │
-│                                          │
-│  Step 3: Build Policy Prompt            │
-│  ├── Include policy titles              │
-│  ├── Include policy content              │
-│  └── Add user question                  │
-│                                          │
-│  Step 4: Generate Response              │
-│  └── OpenAI explains policy clearly      │
+│  3. Retrieval (Vector + Cache)          │
+│  - Search: "phương thức thanh toán"     │
+│  - Result: [Guide Payment, Policy Ship] │
+│  - *Fix*: Handle null data in Policies  │
 └──────────────┬──────────────────────────┘
                │
                ▼
-    Clear Policy Explanation
-```
-
----
-
-## 6. Luồng Chi Tiết: CSKH (Customer Service)
-
-```
-User: "Tôi cần hỗ trợ về đơn hàng"
-       │
-       ▼
 ┌─────────────────────────────────────────┐
-│  handle_cskh(query)                     │
-│                                          │
-│  Step 1: Search CSKH Content            │
-│  ├── Vector search for FAQ/help          │
-│  ├── Filter category="cskh" or "faq"   │
-│  └── Get relevant help articles         │
-│                                          │
-│  Step 2: Build Helpful Response         │
-│  ├── Include FAQ content                │
-│  ├── Provide step-by-step guidance      │
-│  └── Add contact info if needed         │
-│                                          │
-│  Step 3: Generate Friendly Response     │
-│  └── OpenAI with friendly tone           │
+│  4. Reranking (LLM)                     │
+│  - Filter: Keep only Payment Guide      │
 └──────────────┬──────────────────────────┘
                │
                ▼
-    Helpful CSKH Response
-```
-
----
-
-## 7. Luồng Chi Tiết: Realtime Data
-
-```
-User: "iPhone 15 còn hàng không?"
-       │
-       ▼
 ┌─────────────────────────────────────────┐
-│  get_realtime_data(query, top_k=3)     │
-│                                          │
-│  Step 1: Find Product                   │
-│  ├── Vector search for "iPhone 15"      │
-│  └── Get product IDs                    │
-│                                          │
-│  Step 2: Fetch Fresh Data               │
-│  For each product:                      │
-│  ├── Query Product Store (fresh)         │
-│  ├── Get current price                  │
-│  ├── Get current rating                 │
-│  ├── Get sold count                     │
-│  └── Get variants with stock status     │
-│                                          │
-│  Step 3: Build Realtime Info            │
-│  ├── Format stock status per variant    │
-│  ├── Show current prices                │
-│  └── Include last updated time          │
-│                                          │
-│  Step 4: Generate Response              │
-│  └── OpenAI with realtime data           │
+│  5. Prompt Build                        │
+│  - Role: Policy Expert                  │
+│  - Rule: "Liệt kê ĐẦY ĐỦ, numbered list"│
+│  - Context: Full Payment Guide text     │
 └──────────────┬──────────────────────────┘
                │
                ▼
-    Realtime Stock & Price Info
+┌─────────────────────────────────────────┐
+│  6. Generation (Gemini 2.0 Flash)       │
+│  - Generate final answer                │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+     "Chúng tôi hỗ trợ các phương thức:..."
 ```
 
 ---
 
-## 8. Luồng Quản Lý Nội Dung (Admin)
+## 4. Cấu Trúc Response
 
-```
-┌─────────────┐
-│   Admin     │
-│  (CMS UI)   │
-└──────┬──────┘
-       │
-       │ POST /content
-       │ {title, content, category, tags}
-       ▼
-┌─────────────────────────────────────┐
-│  ContentService                     │
-│  services/content_service.py        │
-│                                      │
-│  1. Generate content_id (UUID)       │
-│  2. Store to Content Store          │
-│  3. Publish event                    │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│  Event Processor                     │
-│  (Postgres/Kafka)                    │
-│                                      │
-│  Event: {                            │
-│    event_type: "create",            │
-│    content_id: "...",               │
-│    data: {...}                      │
-│  }                                   │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│  ContentEventHandler                 │
-│  services/content_event_handler.py   │
-│                                      │
-│  1. Receive event                    │
-│  2. Fetch content from store          │
-│  3. Generate embedding                │
-│     (title + content)                 │
-│  4. Upsert to Vector Store           │
-│     with metadata: {                 │
-│       type: "content",               │
-│       category: "policy",            │
-│       tags: [...]                    │
-│     }                                │
-└──────────────┬──────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────┐
-│  Vector Store (Pinecone)             │
-│                                      │
-│  Content now searchable by chatbot   │
-└─────────────────────────────────────┘
-```
+API trả về JSON với cấu trúc phong phú:
 
----
-
-## 9. Data Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         CHATBOT DATA FLOW                        │
-└─────────────────────────────────────────────────────────────────┘
-
-User Query
-    │
-    ▼
-┌─────────────────┐
-│ Intent Detection│
-└────────┬────────┘
-    │
-    ├──► product_info ──► Product Store ──► Vector Store
-    │
-    ├──► compare ───────► Product Store ──► Vector Store
-    │
-    ├──► policy ────────► Content Store ─► Vector Store
-    │
-    ├──► cskh ──────────► Content Store ─► Vector Store
-    │
-    └──► realtime ──────► Product Store ─► User Behavior
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Fresh Data      │
-                    │  (Stock, Price)  │
-                    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  OpenAI API     │
-                    │  (GPT-4o-mini)  │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │  Response       │
-                    │  + Contexts     │
-                    └─────────────────┘
-```
-
----
-
-## 10. API Endpoints
-
-### Chatbot Endpoints
-
-```
-POST /chatbot/chat
-Request:
+```json
 {
-  "query": "iPhone 15 giá bao nhiêu?",
-  "top_k": 5,
-  "user_id": "user123" (optional)
-}
-
-Response:
-{
-  "answer": "iPhone 15 có giá từ 20.990.000 VNĐ...",
+  "answer": "Chúng tôi hỗ trợ thanh toán qua Ví điện tử (Momo, ZaloPay), Thẻ tín dụng và COD.",
   "contexts": [
     {
-      "id": "product_123",
+      "id": "content-123",
       "type": "product",
-      "score": 0.95,
-      "data": {...}
+      "metadata": {
+        "title": "Hướng dẫn thanh toán",
+        "category": "Guide"
+      }
     }
   ],
-  "intent": "product_info",
-  "capabilities": {
-    "product_info": "Trả lời về thông tin sản phẩm",
-    "compare": "So sánh sản phẩm",
-    "policy": "Thông tin chính sách",
-    "cskh": "Chăm sóc khách hàng tự động",
-    "realtime": "Dữ liệu realtime (tồn kho, giá, đánh giá)"
+  "intent": {
+    "primary": "policy",
+    "confidence": 0.95
   }
 }
 ```
 
-### Content Management Endpoints (Admin)
+---
 
-```
-POST /content
-Create new content
+## 5. Các Tính Năng Kỹ Thuật Nổi Bật
 
-GET /content?category=policy&limit=10&offset=0
-List content with filtering
-
-GET /content/search?q=đổi trả&category=policy
-Semantic search for content
-
-GET /content/{content_id}
-Get specific content
-
-PUT /content/{content_id}
-Update content
-
-DELETE /content/{content_id}
-Delete content
-
-GET /content/categories
-Get all categories
-```
+1.  **Robust JSON Parsing**: Module `SecurityUtils` có khả năng tự sửa lỗi JSON từ LLM (strip markdown, tìm object bằng regex), đảm bảo hệ thống không bị crash khi model trả về format lạ.
+2.  **Context Aware Coreference**: Hiểu được ngữ cảnh hội thoại để xử lý các câu hỏi nối tiếp (VD: "Giá bao nhiêu?" sau khi hỏi về iPhone).
+3.  **Circuit Breaker**: Bảo vệ hệ thống khi Google API gặp sự cố.
+4.  **Redis Caching**: Cache kết quả Embedding, Intent và Search Result để tăng tốc độ phản hồi (Hit rate cao).
+5.  **Offline Mode Fallback**: Tự động chuyển sang chế độ offline (trả về dữ liệu thô từ search) nếu LLM generation thất bại.
 
 ---
 
-## 11. Component Architecture
+## 6. API Endpoints
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CHATBOT ARCHITECTURE                      │
-└─────────────────────────────────────────────────────────────┘
+### Chatbot
+-   `POST /chatbot/chat`: Endpoint chính để chat.
 
-┌──────────────────┐
-│  API Layer       │
-│  - chatbot.py    │  ← User requests
-│  - content.py    │  ← Admin requests
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Service Layer   │
-│  - ChatbotService│  ← Intent detection, routing, response
-│  - ContentService│  ← Content CRUD, search
-└────────┬─────────┘
-         │
-         ├──────────────────┬──────────────────┐
-         ▼                  ▼                  ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ Vector Store │  │Product Store │  │Content Store │
-│ (Pinecone)   │  │ (Supabase)   │  │ (Supabase)   │
-└──────────────┘  └──────────────┘  └──────────────┘
-         │                  │                  │
-         └──────────────────┴──────────────────┘
-                           │
-                           ▼
-                  ┌──────────────┐
-                  │ OpenAI API   │
-                  │ (GPT-4o-mini)│
-                  └──────────────┘
-```
-
----
-
-## 12. Intent Detection Keywords
-
-### Product Information
-- `thông tin`, `thông số`, `spec`, `chi tiết`, `mô tả`
-- `giá`, `giá bán`, `giá bao nhiêu`
-- Product names: `sản phẩm`, `máy`, `điện thoại`, `laptop`, etc.
-
-### Comparison
-- `so sánh`, `compare`, `khác nhau`, `giống nhau`
-- `nên mua`, `nên chọn`
-
-### Policy
-- `chính sách`, `policy`, `đổi trả`, `bảo hành`
-- `vận chuyển`, `giao hàng`, `thanh toán`, `hoàn tiền`
-
-### CSKH
-- `hỗ trợ`, `tư vấn`, `liên hệ`, `hotline`, `email`
-- `cskh`, `customer service`, `help`, `giúp đỡ`
-
-### Realtime Data
-- `còn hàng`, `hết hàng`, `tồn kho`, `stock`
-- `số lượng`, `còn lại`, `realtime`, `thời gian thực`
-
----
-
-## 13. Error Handling
-
-```
-User Query
-    │
-    ▼
-┌─────────────────┐
-│ Intent Detection │
-└────────┬────────┘
-    │
-    ▼
-┌─────────────────┐
-│ Data Retrieval   │
-│ (with fallback)  │
-└────────┬────────┘
-    │
-    ├──► Success ──► Generate Response
-    │
-    └──► Error ──► Fallback Response
-                    "Xin lỗi, tôi không tìm thấy..."
-                    "Vui lòng liên hệ CSKH..."
-```
-
----
-
-## 14. Performance Optimization
-
-1. **Caching**: Vector search results cached
-2. **Parallel Processing**: Multiple product queries in parallel
-3. **Lazy Loading**: Product details loaded only when needed
-4. **Connection Pooling**: Database connections reused
-5. **Async Operations**: Non-blocking API calls
-
----
-
-## 15. Monitoring & Logging
-
-- Intent detection accuracy
-- Response generation time
-- Vector search performance
-- OpenAI API latency
-- Error rates by intent type
-- User satisfaction metrics
-
----
-
-## Kết Luận
-
-Chatbot sử dụng kiến trúc RAG với khả năng:
-- ✅ Tự động phân loại intent
-- ✅ Truy xuất thông tin từ nhiều nguồn
-- ✅ Tạo câu trả lời tự nhiên bằng tiếng Việt
-- ✅ Hỗ trợ 5 loại câu hỏi chính
-- ✅ Quản lý nội dung dễ dàng cho admin
-- ✅ Cập nhật realtime dữ liệu
-
+### Content Management (Admin)
+-   Hệ thống cho phép admin tạo/upload nội dung chính sách (Policy/Guide).
+-   Dữ liệu được vector hóa và lưu vào Pinecone ngay lập tức để chatbot có thể tra cứu.

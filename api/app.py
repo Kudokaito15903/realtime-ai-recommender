@@ -24,13 +24,13 @@ app = FastAPI(
 )
 
 # Add CORS middleware (optional - keep disabled by default)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # In production, restrict this to your frontend domain
-#     allow_credentials=False,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict this to your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 #
 # # Add custom logging middleware
 # app.add_middleware(LoggingMiddleware)

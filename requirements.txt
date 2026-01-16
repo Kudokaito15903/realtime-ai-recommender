@@ -37,3 +37,4 @@ loguru
 
 # Development và type checking
 typing-extensions
+google-genai

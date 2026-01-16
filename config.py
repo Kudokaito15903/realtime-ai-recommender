@@ -92,8 +92,8 @@ VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "product:vectors")
 
 # Vector Configuration
 VECTOR_DIMENSION = int(
-    os.getenv("VECTOR_DIMENSION", 384)
-)  # Dimension from all-MiniLM-L6-v2
+    os.getenv("VECTOR_DIMENSION", 768)
+)  # Dimension from intfloat/multilingual-e5-base
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
 
 # Model Configuration
@@ -185,6 +185,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", 'sk-or-v1-b3d4e7527daf0af67a0f97c6a
 OPENAI_MODEL= os.getenv("OPENAI_MODEL", 'google/gemma-3-27b-it:free')
 OPENAI_API_URL = os.getenv("OPENAI_API_URL", 'https://openrouter.ai/api/v1')
 
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash-exp")
+
 # Content store
 CONTENT_STORE_TYPE = os.getenv("CONTENT_STORE_TYPE", "supabase")
 
@@ -228,7 +231,7 @@ class Config:
         self.API_PORT = int(os.getenv("API_PORT", 8000))
 
         # Vector configuration
-        self.VECTOR_DIMENSIONS = int(os.getenv("VECTOR_DIMENSION", 384))
+        self.VECTOR_DIMENSION = int(os.getenv("VECTOR_DIMENSION", 768))
         self.SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
 
         # Model configuration
@@ -247,10 +250,13 @@ class Config:
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
 
-        # Chatbot Configuration
+		# Chatbot Configuration
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
         self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL) 
         self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", OPENAI_API_URL)
+        
+        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", GOOGLE_API_KEY)
+        self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", GOOGLE_MODEL)
 
         # Brand & Fine-tuning
         self.BRAND_PERSONALITY = os.getenv(

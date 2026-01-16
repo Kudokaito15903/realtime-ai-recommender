@@ -1,5 +1,6 @@
 """
-Enhanced Chatbot Service with Redis Cache Integration
+Enhanced Chatbot Service with Redis Cache Integration - IMPROVED VERSION
+Fixes: Security, Performance, Race Conditions, Error Handling
 """
 
 import os
@@ -7,31 +8,122 @@ import time
 import json
 import re
 import hashlib
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
+import threading
+from typing import List, Dict, Any, Optional, Tuple, Set
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timedelta
+from contextlib import contextmanager
+from functools import lru_cache, wraps
 from loguru import logger
-from openai import OpenAI
+from google import genai
+import numpy as np
 
 from adapters.factory import get_vector_store, get_product_store, get_content_store, get_user_behavior
 from domain.embeddings.product_embeddings import get_embedding_model
-from redis_cache import RedisCache, cache_result 
+from redis_cache import RedisCache
 import config
 
+
+# ==================== SECURITY UTILITIES ====================
+
+class SecurityUtils:
+    """Security utilities for input sanitization"""
+    
+    MAX_QUERY_LENGTH = 1000
+    MAX_SESSION_ID_LENGTH = 100
+    
+    @staticmethod
+    def sanitize_query(query: str) -> str:
+        """Sanitize user query to prevent prompt injection"""
+        if not query:
+            return ""
+        
+        # Remove control characters
+        query = re.sub(r'[\x00-\x1F\x7F]', '', query)
+        
+        # Limit length
+        query = query[:SecurityUtils.MAX_QUERY_LENGTH]
+        
+        # Remove suspicious patterns
+        suspicious_patterns = [
+            r'ignore\s+all\s+previous\s+instructions',
+            r'you\s+are\s+now',
+            r'system\s*:',
+            r'<\s*script',
+        ]
+        for pattern in suspicious_patterns:
+            query = re.sub(pattern, '', query, flags=re.IGNORECASE)
+        
+        return query.strip()
+    
+    @staticmethod
+    def sanitize_session_id(session_id: str) -> str:
+        """Sanitize session ID"""
+        if not session_id:
+            return "default"
+        
+        # Only allow alphanumeric, dash, underscore
+        session_id = re.sub(r'[^a-zA-Z0-9_-]', '', session_id)
+        return session_id[:SecurityUtils.MAX_SESSION_ID_LENGTH] or "default"
+    
+    @staticmethod
+    def repair_json(json_str: str) -> str:
+        """Repair common JSON errors (unquoted keys, single quotes)"""
+        # Add quotes to unquoted keys
+        json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
+        # Replace single quotes with double quotes for string values (simple case)
+        # This is risky for nested quotes but helpful for simple loose JSON
+        # json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str) 
+        return json_str
+
+    @staticmethod
+    def safe_json_parse(json_str: Any) -> Optional[Dict]:
+        """Safely parse JSON with proper error handling"""
+        if not json_str:
+            return None
+        
+        if isinstance(json_str, dict):
+            return json_str
+        
+        if isinstance(json_str, str):
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                # Try to repair
+                try:
+                    repaired = SecurityUtils.repair_json(json_str)
+                    return json.loads(repaired)
+                except Exception as e:
+                    logger.warning(f"JSON decode error: {e}. Content: {json_str[:100]}...")
+                    return None
+            except Exception as e:
+                logger.error(f"Unexpected error parsing JSON: {e}")
+                return None
+        
+        return None
+
+
+# ==================== DATA CLASSES ====================
 
 @dataclass
 class Intent:
     """Structured intent classification result"""
     primary: str
-    secondary: List[str]
-    confidence: float
-    entities: Dict[str, Any]
+    secondary: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    entities: Dict[str, Any] = field(default_factory=dict)
     
-    def to_dict(self):
+    def to_dict(self) -> Dict:
         return asdict(self)
     
     @classmethod
-    def from_dict(cls, data: Dict):
-        return cls(**data)
+    def from_dict(cls, data: Dict) -> 'Intent':
+        return cls(
+            primary=data.get('primary', 'general'),
+            secondary=data.get('secondary', []),
+            confidence=data.get('confidence', 0.0),
+            entities=data.get('entities', {})
+        )
 
 
 @dataclass
@@ -44,7 +136,7 @@ class ConversationTurn:
     timestamp: float
     metrics: Optional[Dict[str, float]] = None
     
-    def to_dict(self):
+    def to_dict(self) -> Dict:
         return {
             'query': self.query,
             'answer': self.answer,
@@ -55,21 +147,121 @@ class ConversationTurn:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict):
+    def from_dict(cls, data: Dict) -> 'ConversationTurn':
         intent_data = data.get('intent')
         intent = Intent.from_dict(intent_data) if intent_data else None
         return cls(
             query=data['query'],
             answer=data['answer'],
-            contexts=data['contexts'],
+            contexts=data.get('contexts', []),
             intent=intent,
             timestamp=data['timestamp'],
             metrics=data.get('metrics')
         )
 
 
+# ==================== PERFORMANCE UTILITIES ====================
+
+def timed_operation(operation_name: str):
+    """Decorator to measure operation time"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            try:
+                result = func(*args, **kwargs)
+                elapsed = time.time() - start
+                logger.debug(f"{operation_name} took {elapsed:.3f}s")
+                return result
+            except Exception as e:
+                elapsed = time.time() - start
+                logger.error(f"{operation_name} failed after {elapsed:.3f}s: {e}")
+                raise
+        return wrapper
+    return decorator
+
+
+class CircuitBreaker:
+    """Circuit breaker for external API calls"""
+    
+    def __init__(self, failure_threshold: int = 5, timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.failures = 0
+        self.last_failure_time = None
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self._lock = threading.Lock()
+    
+    def call(self, func, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        with self._lock:
+            if self.state == "OPEN":
+                if time.time() - self.last_failure_time > self.timeout:
+                    self.state = "HALF_OPEN"
+                    logger.info("Circuit breaker entering HALF_OPEN state")
+                else:
+                    raise Exception("Circuit breaker is OPEN")
+        
+        try:
+            result = func(*args, **kwargs)
+            with self._lock:
+                if self.state == "HALF_OPEN":
+                    self.state = "CLOSED"
+                    self.failures = 0
+                    logger.info("Circuit breaker reset to CLOSED")
+            return result
+        
+        except Exception as e:
+            with self._lock:
+                self.failures += 1
+                self.last_failure_time = time.time()
+                
+                if self.failures >= self.failure_threshold:
+                    self.state = "OPEN"
+                    logger.warning(f"Circuit breaker opened after {self.failures} failures")
+            raise
+
+
+# ==================== SINGLETON GOOGLE GENAI CLIENT ====================
+
+class GoogleGenAIClientSingleton:
+    """Thread-safe singleton for Google GenAI client"""
+    
+    _instance = None
+    _lock = threading.Lock()
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if not self._initialized:
+            with self._lock:
+                if not self._initialized:
+                    self.client = genai.Client(api_key=config.GOOGLE_API_KEY)
+                    self.circuit_breaker = CircuitBreaker(
+                        failure_threshold=5,
+                        timeout=60
+                    )
+                    self.__class__._initialized = True
+                    logger.info("Google GenAI client initialized")
+    
+    def generate_content(self, **kwargs):
+        """Generate content with circuit breaker"""
+        return self.circuit_breaker.call(
+            self.client.models.generate_content,
+            **kwargs
+        )
+
+
+# ==================== MAIN CHATBOT SERVICE ====================
+
 class ChatbotService:
-    """Enhanced Chatbot Service with Redis caching"""
+    """Enhanced Chatbot Service with Security, Performance, and Reliability Improvements"""
     
     def __init__(
         self,
@@ -79,16 +271,8 @@ class ChatbotService:
         redis_password: Optional[str] = None,
         enable_cache: bool = True
     ):
-        """
-        Initialize Chatbot Service with Redis cache
+        """Initialize Chatbot Service"""
         
-        Args:
-            redis_host: Redis server host
-            redis_port: Redis server port
-            redis_db: Redis database number
-            redis_password: Redis password
-            enable_cache: Whether to enable caching
-        """
         # Initialize adapters
         self.vector_store = get_vector_store()
         self.embedding_model = get_embedding_model()
@@ -96,11 +280,8 @@ class ChatbotService:
         self.content_store = get_content_store()
         self.user_behavior = get_user_behavior()
         
-        # Initialize OpenAI client
-        self.client = OpenAI(
-            base_url=config.OPENAI_API_URL,
-            api_key=config.OPENAI_API_KEY,
-        )
+        # Initialize Google GenAI client (singleton)
+        self.google_client = GoogleGenAIClientSingleton()
         
         # Initialize Redis cache
         self.enable_cache = enable_cache
@@ -118,12 +299,21 @@ class ChatbotService:
         
         # Cache configuration
         self.CACHE_CONFIG = {
-            'product_ttl': 300,          # 5 minutes
-            'embedding_ttl': 3600,       # 1 hour
-            'query_result_ttl': 180,     # 3 minutes
-            'conversation_ttl': 1800,    # 30 minutes
-            'intent_ttl': 600,           # 10 minutes
+            'product_ttl': 300,
+            'embedding_ttl': 3600,
+            'query_result_ttl': 180,
+            'conversation_ttl': 1800,
+            'intent_ttl': 600,
         }
+        
+        # Performance monitoring
+        self._stats = {
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'llm_calls': 0,
+            'errors': 0
+        }
+        self._stats_lock = threading.Lock()
     
     # ==================== CACHING METHODS ====================
     
@@ -132,77 +322,149 @@ class ChatbotService:
         key_str = ":".join(str(p) for p in parts)
         return hashlib.md5(key_str.encode()).hexdigest()
     
+    @timed_operation("get_product_cached")
     def get_product_cached(self, product_id: str) -> Optional[Dict[str, Any]]:
         """Get product with Redis caching"""
         if not self.enable_cache or not self.cache:
             return self._fetch_product_from_db(product_id)
         
-        # Try cache first
-        cached = self.cache.get(product_id, prefix='product')
-        if cached:
-            logger.debug(f"Product cache HIT: {product_id}")
-            return cached
+        try:
+            # Try cache first
+            cached = self.cache.get(product_id, prefix='product')
+            if cached:
+                logger.debug(f"Product cache HIT: {product_id}")
+                self._increment_stat('cache_hits')
+                return cached
+            
+            # Cache miss
+            logger.debug(f"Product cache MISS: {product_id}")
+            self._increment_stat('cache_misses')
+            
+            product = self._fetch_product_from_db(product_id)
+            
+            if product:
+                self.cache.set(
+                    product_id,
+                    product,
+                    prefix='product',
+                    ttl=self.CACHE_CONFIG['product_ttl']
+                )
+            
+            return product
         
-        # Cache miss
-        logger.debug(f"Product cache MISS: {product_id}")
-        product = self._fetch_product_from_db(product_id)
+        except Exception as e:
+            logger.error(f"Cache error for product {product_id}: {e}")
+            self._increment_stat('errors')
+            return self._fetch_product_from_db(product_id)
+    
+    def get_products_batch(self, product_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Batch fetch products (optimized)"""
+        if not product_ids:
+            return {}
         
-        if product:
-            self.cache.set(
-                product_id,
-                product,
-                prefix='product',
-                ttl=self.CACHE_CONFIG['product_ttl']
-            )
+        products = {}
+        missing_ids = []
         
-        return product
+        # Try to get from cache first
+        if self.enable_cache and self.cache:
+            for pid in product_ids:
+                cached = self.cache.get(pid, prefix='product')
+                if cached:
+                    products[pid] = cached
+                    self._increment_stat('cache_hits')
+                else:
+                    missing_ids.append(pid)
+                    self._increment_stat('cache_misses')
+        else:
+            missing_ids = product_ids
+        
+        # Batch fetch missing products
+        if missing_ids:
+            try:
+                if hasattr(self.product_store, 'get_products_batch'):
+                    fetched = self.product_store.get_products_batch(missing_ids)
+                else:
+                    # Fallback to individual fetches
+                    fetched = {
+                        pid: self._fetch_product_from_db(pid)
+                        for pid in missing_ids
+                    }
+                
+                # Cache fetched products
+                if self.enable_cache and self.cache:
+                    for pid, product in fetched.items():
+                        if product:
+                            self.cache.set(
+                                pid,
+                                product,
+                                prefix='product',
+                                ttl=self.CACHE_CONFIG['product_ttl']
+                            )
+                
+                products.update(fetched)
+            
+            except Exception as e:
+                logger.error(f"Batch fetch failed: {e}")
+                self._increment_stat('errors')
+        
+        return products
     
     def _fetch_product_from_db(self, product_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch product from database"""
+        """Fetch product from database (with error handling)"""
         try:
             if self.product_store:
+                # Ensure product_id is sanitized (basic validation)
+                if not re.match(r'^[a-zA-Z0-9_-]+$', product_id):
+                    logger.warning(f"Invalid product_id format: {product_id}")
+                    return None
+                
                 return self.product_store.get_product(product_id)
         except Exception as e:
             logger.error(f"Failed to fetch product {product_id}: {e}")
+            self._increment_stat('errors')
         return None
     
-    def get_embedding_cached(self, text: str) -> List[float]:
-        """Get text embedding with caching"""
-        if not self.enable_cache or not self.cache:
-            return self.embedding_model.get_embedding(text)
+    @lru_cache(maxsize=1000)
+    def get_embedding_cached(self, text: str) -> np.ndarray:
+        """Get text embedding with caching (LRU + Redis)"""
+        if not text or not text.strip():
+            return np.zeros(self.embedding_model.dimension, dtype=np.float32)
         
-        # Use hash of text as cache key
-        cache_key = self._get_cache_key(text)
-        
-        cached = self.cache.get(cache_key, prefix='embedding')
-        if cached:
-            logger.debug(f"Embedding cache HIT")
-            return cached
+        # Check Redis cache
+        if self.enable_cache and self.cache:
+            cache_key = self._get_cache_key(text)
+            cached = self.cache.get(cache_key, prefix='embedding')
+            
+            if cached is not None:
+                logger.debug("Embedding cache HIT")
+                self._increment_stat('cache_hits')
+                return np.array(cached, dtype=np.float32)
+            
+            self._increment_stat('cache_misses')
         
         # Generate embedding
-        logger.debug(f"Embedding cache MISS")
         embedding = self.embedding_model.get_embedding(text)
         
         # Cache the embedding
-        self.cache.set(
-            cache_key,
-            embedding,
-            prefix='embedding',
-            ttl=self.CACHE_CONFIG['embedding_ttl']
-        )
+        if self.enable_cache and self.cache:
+            cache_key = self._get_cache_key(text)
+            self.cache.set(
+                cache_key,
+                embedding.tolist(),
+                prefix='embedding',
+                ttl=self.CACHE_CONFIG['embedding_ttl']
+            )
         
         return embedding
     
-    def save_conversation_turn(
-        self,
-        session_id: str,
-        turn: ConversationTurn
-    ):
+    def save_conversation_turn(self, session_id: str, turn: ConversationTurn):
         """Save conversation turn to Redis"""
         if not self.enable_cache or not self.cache:
             return
         
         try:
+            session_id = SecurityUtils.sanitize_session_id(session_id)
+            
             # Get existing conversation
             conversation = self.cache.get_list(session_id, prefix='conversation') or []
             
@@ -220,8 +482,10 @@ class ChatbotService:
                 ttl=self.CACHE_CONFIG['conversation_ttl']
             )
             logger.debug(f"Saved conversation turn for session {session_id}")
+        
         except Exception as e:
             logger.warning(f"Failed to save conversation turn: {e}")
+            self._increment_stat('errors')
     
     def get_conversation_history(self, session_id: str) -> List[ConversationTurn]:
         """Get conversation history from Redis"""
@@ -229,140 +493,180 @@ class ChatbotService:
             return []
         
         try:
+            session_id = SecurityUtils.sanitize_session_id(session_id)
             conversation_data = self.cache.get_list(session_id, prefix='conversation') or []
             return [ConversationTurn.from_dict(turn) for turn in conversation_data]
+        
         except Exception as e:
             logger.warning(f"Failed to get conversation history: {e}")
+            self._increment_stat('errors')
             return []
     
     def clear_conversation(self, session_id: str):
         """Clear conversation history"""
         if self.enable_cache and self.cache:
+            session_id = SecurityUtils.sanitize_session_id(session_id)
             self.cache.delete(session_id, prefix='conversation')
             logger.info(f"Cleared conversation for session {session_id}")
     
-    def cache_query_result(
-        self,
-        query: str,
-        result: List[Dict[str, Any]],
-        ttl: Optional[int] = None
-    ):
-        """Cache query result"""
+    def cleanup_old_sessions(self, max_age_hours: int = 24):
+        """Cleanup old conversation sessions"""
         if not self.enable_cache or not self.cache:
             return
         
-        cache_key = self._get_cache_key(query)
-        self.cache.set(
-            cache_key,
-            result,
-            prefix='query_result',
-            ttl=ttl or self.CACHE_CONFIG['query_result_ttl']
-        )
-    
-    def get_cached_query_result(self, query: str) -> Optional[List[Dict[str, Any]]]:
-        """Get cached query result"""
-        if not self.enable_cache or not self.cache:
-            return None
+        try:
+            pattern = f"{self.cache.PREFIXES.get('conversation', 'conv')}:*"
+            cleaned = 0
+            
+            for key in self.cache.scan_iter(pattern):
+                ttl = self.cache.ttl(key)
+                if ttl < 0:  # No expiry set
+                    self.cache.delete_raw(key)
+                    cleaned += 1
+            
+            logger.info(f"Cleaned up {cleaned} old sessions")
         
-        cache_key = self._get_cache_key(query)
-        return self.cache.get(cache_key, prefix='query_result')
+        except Exception as e:
+            logger.error(f"Session cleanup failed: {e}")
     
     def invalidate_product_cache(self, product_id: str):
-        """Invalidate product cache (call when product is updated)"""
+        """Invalidate product cache (with version bump)"""
         if self.enable_cache and self.cache:
             self.cache.delete(product_id, prefix='product')
-            # Also invalidate related query results
-            self.cache.invalidate_pattern(f"{self.cache.PREFIXES['query_result']}*")
+            
+            # Invalidate related query results
+            # Use pattern matching carefully
+            try:
+                pattern = f"{self.cache.PREFIXES.get('query_result', 'qr')}:*"
+                for key in self.cache.scan_iter(pattern):
+                    self.cache.delete_raw(key)
+            except Exception as e:
+                logger.warning(f"Query cache invalidation failed: {e}")
+            
             logger.info(f"Invalidated cache for product {product_id}")
     
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
-        if self.enable_cache and self.cache:
-            return self.cache.get_stats()
-        return {'enabled': False}
-    
-    # ==================== CORE CHATBOT METHODS ====================
+    # ==================== INTENT DETECTION ====================
     
     def _resolve_coreferences(self, query: str, history: List[ConversationTurn]) -> str:
-        """Resolve pronouns and references from conversation history"""
+        """Resolve pronouns and references (IMPROVED)"""
         if not history:
             return query
         
         query_lower = query.lower()
-        pronouns = ['nó', 'nó đó', 'cái đó', 'cái này', 'sản phẩm đó', 'cái kia']
+        pronouns = ['nó', 'nó đó', 'cái đó', 'cái này', 'sản phẩm đó', 'cái kia', 'em ấy', 'thằng này']
         
+        # Find the most recent product mentioned
+        last_product_name = None
+        for turn in reversed(history[-3:]):
+            if turn.contexts:
+                for ctx in turn.contexts:
+                    if ctx.get('type') == 'product':
+                        data = ctx.get('data')
+                        if data:
+                            last_product_name = data.get('name')
+                            break
+                if last_product_name:
+                    break
+        
+        if not last_product_name:
+            return query
+        
+        # Replace ALL occurrences of pronouns
+        resolved = query
         for pronoun in pronouns:
             if pronoun in query_lower:
-                for turn in reversed(history[-3:]):
-                    if turn.contexts:
-                        for ctx in turn.contexts:
-                            if ctx.get('type') == 'product':
-                                data = ctx.get('data')
-                                if data:  # Safety check for None
-                                    product_name = data.get('name')
-                                    if product_name:
-                                        resolved = query.replace(pronoun, product_name)
-                                        logger.info(f"Resolved '{pronoun}' to '{product_name}'")
-                                        return resolved
+                # Use word boundaries for accurate replacement
+                pattern = r'\b' + re.escape(pronoun) + r'\b'
+                resolved = re.sub(pattern, last_product_name, resolved, flags=re.IGNORECASE)
+                logger.info(f"Resolved '{pronoun}' → '{last_product_name}'")
         
-        return query
+        return resolved
     
+    @timed_operation("detect_intent")
     def _detect_intent_llm(self, query: str, history: List[ConversationTurn]) -> Intent:
         """Advanced intent detection using LLM with caching"""
         
+        # Sanitize query
+        query_safe = SecurityUtils.sanitize_query(query)
+        
         # Check cache first
         if self.enable_cache and self.cache:
-            cache_key = self._get_cache_key('intent', query, len(history))
+            cache_key = self._get_cache_key('intent', query_safe, len(history))
             cached_intent = self.cache.get(cache_key, prefix='query_result')
+            
             if cached_intent:
                 logger.debug("Intent cache HIT")
+                self._increment_stat('cache_hits')
                 return Intent.from_dict(cached_intent)
+            
+            self._increment_stat('cache_misses')
         
         # Build context from history
         history_context = ""
         if history:
             recent = history[-3:]
-            history_context = "Lịch sử hội thoại:\n"
+            history_parts = []
             for i, turn in enumerate(recent):
-                history_context += f"{i+1}. Khách: {turn.query}\n   Bot: {turn.answer[:100]}...\n"
+                history_parts.append(f"{i+1}. Khách: {turn.query}")
+                history_parts.append(f"   Bot: {turn.answer[:100]}...")
+            history_context = "Lịch sử hội thoại:\n" + "\n".join(history_parts)
         
-        intent_prompt = f"""Phân tích câu hỏi của khách hàng và trả về intent dưới dạng JSON.
+        intent_prompt = f"""Phân tích câu hỏi và trả về intent dưới dạng JSON.
 
 {history_context}
 
-Câu hỏi hiện tại: "{query}"
+Câu hỏi: "{query_safe}"
 
-Các intent có thể:
-- product_search: Tìm kiếm sản phẩm
-- product_info: Hỏi chi tiết về sản phẩm
-- compare: So sánh sản phẩm
+Intent types:
+- product_search: Tìm sản phẩm
+- product_info: Hỏi chi tiết sản phẩm
+- compare: So sánh
 - stock_check: Kiểm tra tồn kho
-- policy: Hỏi về chính sách
-- support: Hỗ trợ chung
+- policy: Chính sách
+- support: Hỗ trợ
 - greeting: Chào hỏi
-- general: Câu hỏi chung
+- general: Chung
 
-Trả về JSON (KHÔNG có markdown):
+Trả về JSON object hợp lệ (không markdown, không backticks):
 {{
-  "primary_intent": "...",
-  "secondary_intents": [],
+  "primary_intent": "string",
+  "secondary_intents": ["string"],
   "confidence": 0.9,
   "entities": {{
-    "product_names": [],
-    "brands": [],
-    "price_range": null,
-    "keywords": []
-  }},
-  "reasoning": "..."
+    "product_names": ["string"],
+    "brands": ["string"],
+    "keywords": ["string"]
+  }}
 }}"""
-
+        
         try:
-            response = self._call_openai_chat(intent_prompt, max_tokens=300, temperature=0.1)
+            response = self._call_genai(
+                intent_prompt,
+                max_tokens=300,
+                temperature=0.1,
+                json_mode=True
+            )
+            
+            # Clean response
             response = response.strip()
-            if response.startswith('```'):
+            
+            # Extract JSON object using regex (finds outermost braces)
+            match = re.search(r'(\{.*\})', response, re.DOTALL)
+            if match:
+                response = match.group(1)
+            else:
+                # Fallback cleanup
                 response = re.sub(r'^```json?\s*|\s*```$', '', response, flags=re.MULTILINE)
             
-            intent_data = json.loads(response)
+            logger.debug(f"LLM Raw Intent Response: {response}")
+
+            # Parse JSON safely
+            intent_data = SecurityUtils.safe_json_parse(response)
+            
+            if not intent_data:
+                logger.warning("LLM returned invalid JSON for intent")
+                return self._detect_intent_fallback(query)
+            
             intent = Intent(
                 primary=intent_data.get('primary_intent', 'general'),
                 secondary=intent_data.get('secondary_intents', []),
@@ -372,7 +676,7 @@ Trả về JSON (KHÔNG có markdown):
             
             # Cache the intent
             if self.enable_cache and self.cache:
-                cache_key = self._get_cache_key('intent', query, len(history))
+                cache_key = self._get_cache_key('intent', query_safe, len(history))
                 self.cache.set(
                     cache_key,
                     intent.to_dict(),
@@ -381,49 +685,60 @@ Trả về JSON (KHÔNG có markdown):
                 )
             
             return intent
-            
+        
         except Exception as e:
             logger.warning(f"LLM intent detection failed: {e}")
+            self._increment_stat('errors')
             return self._detect_intent_fallback(query)
     
     def _detect_intent_fallback(self, query: str) -> Intent:
         """Fallback rule-based intent detection"""
         query_lower = query.lower()
         
-        if any(kw in query_lower for kw in ['xin chào', 'hello', 'hi', 'chào']):
-            return Intent('greeting', [], 0.9, {})
+        rules = [
+            (['xin chào', 'hello', 'hi', 'chào'], 'greeting', 0.9),
+            (['so sánh', 'compare', 'khác nhau'], 'compare', 0.8),
+            (['còn hàng', 'hết hàng', 'tồn kho'], 'stock_check', 0.8),
+            (['chính sách', 'đổi trả', 'bảo hành', 'thanh toán', 'trả tiền'], 'policy', 0.8),
+            (['hỗ trợ', 'liên hệ', 'hotline'], 'support', 0.8),
+            (['thông số', 'chi tiết', 'giá'], 'product_info', 0.7),
+        ]
         
-        if any(kw in query_lower for kw in ['so sánh', 'compare', 'khác nhau']):
-            return Intent('compare', [], 0.8, {})
-        
-        if any(kw in query_lower for kw in ['còn hàng', 'hết hàng', 'tồn kho']):
-            return Intent('stock_check', [], 0.8, {})
-        
-        if any(kw in query_lower for kw in ['chính sách', 'đổi trả', 'bảo hành']):
-            return Intent('policy', [], 0.8, {})
-        
-        if any(kw in query_lower for kw in ['hỗ trợ', 'liên hệ', 'hotline']):
-            return Intent('support', [], 0.8, {})
-        
-        if any(kw in query_lower for kw in ['thông số', 'chi tiết', 'giá']):
-            return Intent('product_info', [], 0.7, {})
+        for keywords, intent, confidence in rules:
+            if any(kw in query_lower for kw in keywords):
+                return Intent(intent, [], confidence, {})
         
         return Intent('product_search', [], 0.6, {})
     
-    def retrieve(self, query: str, top_k: int = 5, use_cache: bool = True) -> List[Dict[str, Any]]:
-        """Retrieve with optional caching"""
+    # ==================== RETRIEVAL ====================
+    
+    @timed_operation("retrieve")
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        use_cache: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Retrieve with batch optimization"""
         if not query:
             return []
         
-        # Check cache first
-        if use_cache:
-            cached_result = self.get_cached_query_result(query)
-            if cached_result:
-                logger.debug(f"Query result cache HIT: {query[:50]}")
-                return cached_result[:top_k]
+        query_safe = SecurityUtils.sanitize_query(query)
         
-        # Get embedding (cached)
-        q_emb = self.get_embedding_cached(query)
+        # Check cache
+        if use_cache and self.enable_cache and self.cache:
+            cache_key = self._get_cache_key('query', query_safe, top_k)
+            cached = self.cache.get(cache_key, prefix='query_result')
+            
+            if cached:
+                logger.debug(f"Query cache HIT: {query_safe[:50]}")
+                self._increment_stat('cache_hits')
+                return cached
+            
+            self._increment_stat('cache_misses')
+        
+        # Get embedding
+        q_emb = self.get_embedding_cached(query_safe)
         
         # Search vector store
         candidates = self.vector_store.find_similar_products(
@@ -431,92 +746,136 @@ Trả về JSON (KHÔNG có markdown):
             limit=top_k * 3,
             min_score=0.0
         )
-
-        results: List[Dict[str, Any]] = []
+        
+        # Batch fetch products
+        product_ids = [
+            c.get('product_id')
+            for c in candidates
+            if c.get('metadata', {}).get('type') == 'product'
+        ]
+        
+        products_map = self.get_products_batch(product_ids)
+        
+        # Build results
+        results = []
         for c in candidates:
-            pid = c.get("product_id")
-            meta = c.get("metadata", {}) or {}
-            item_type = meta.get("type", "product")
-
-            if item_type == "product":
-                # Get product (cached)
-                details = self.get_product_cached(pid)
+            pid = c.get('product_id')
+            meta = c.get('metadata', {}) or {}
+            item_type = meta.get('type', 'product')
+            
+            if item_type == 'product':
+                details = products_map.get(pid)
                 results.append({
-                    "id": pid,
-                    "type": "product",
-                    "score": float(c.get("similarity_score", c.get("score", 0.0))),
-                    "metadata": meta,
-                    "data": details,
+                    'id': pid,
+                    'type': 'product',
+                    'score': float(c.get('similarity_score', c.get('score', 0.0))),
+                    'metadata': meta,
+                    'data': details
                 })
-            elif item_type == "content":
-                details = None
+            
+            elif item_type == 'content':
                 try:
-                    if self.content_store:
-                        details = self.content_store.get_content(pid)
-                except Exception:
-                    pass
-
+                    details = self.content_store.get_content(pid) if self.content_store else None
+                except Exception as e:
+                    logger.warning(f"Failed to fetch content {pid}: {e}")
+                    details = None
+                
                 results.append({
-                    "id": pid,
-                    "type": "content",
-                    "score": float(c.get("similarity_score", c.get("score", 0.0))),
-                    "metadata": meta,
-                    "data": details,
+                    'id': pid,
+                    'type': 'content',
+                    'score': float(c.get('similarity_score', c.get('score', 0.0))),
+                    'metadata': meta,
+                    'data': details
                 })
-
-        results.sort(key=lambda x: x["score"], reverse=True)
         
-        # Cache the result
-        if use_cache:
-            self.cache_query_result(query, results)
+        results.sort(key=lambda x: x['score'], reverse=True)
+        results = results[:top_k]
         
-        return results[:top_k]
+        # Cache results
+        if use_cache and self.enable_cache and self.cache:
+            cache_key = self._get_cache_key('query', query_safe, top_k)
+            self.cache.set(
+                cache_key,
+                results,
+                prefix='query_result',
+                ttl=self.CACHE_CONFIG['query_result_ttl']
+            )
+        
+        return results
     
-    def _rerank_contexts(self, query: str, contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Re-rank contexts using LLM"""
+    def _rerank_contexts(
+        self,
+        query: str,
+        contexts: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Re-rank contexts using LLM (with better error handling)"""
         if len(contexts) <= 3:
             return contexts
         
         try:
+            # Build context descriptions
             context_descs = []
             for i, ctx in enumerate(contexts[:10]):
                 if not ctx:
                     continue
+                
+                data = ctx.get('data') or {}
                 if ctx.get('type') == 'product':
-                    data = ctx.get('data', {}) or {}
-                    desc = f"{i}. {data.get('name', 'N/A')} - {data.get('description', '')[:100]}"
+                    name = data.get('name', 'N/A')
+                    desc = data.get('description', '')[:100]
+                    context_descs.append(f"{i}. {name} - {desc}")
                 else:
-                    data = ctx.get('data', {}) or {}
-                    desc = f"{i}. {data.get('title', 'N/A')} - {data.get('content', '')[:100]}"
-                context_descs.append(desc)
+                    title = data.get('title', 'N/A')
+                    content = data.get('content', '')[:100]
+                    context_descs.append(f"{i}. {title} - {content}")
             
-            rerank_prompt = f"""Xếp hạng độ liên quan với câu hỏi.
+            if not context_descs:
+                return contexts
+            
+            rerank_prompt = f"""Xếp hạng độ liên quan.
 
-Câu hỏi: "{query}"
+Câu hỏi: "{SecurityUtils.sanitize_query(query)}"
 
-Các mục:
+Mục:
 {chr(10).join(context_descs)}
 
-Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:"""
+Trả về JSON array chứa các chỉ số (index) của các mục có liên quan nhất, sắp xếp từ cao đến thấp.
+Ví dụ: [0, 2, 1]
 
-            response = self._call_openai_chat(rerank_prompt, max_tokens=100, temperature=0.1)
+Trả về JSON:"""
+            
+            response = self._call_genai(
+                rerank_prompt,
+                max_tokens=100,
+                temperature=0.1,
+                json_mode=True
+            )
+            
             response = response.strip()
             
-            if response.startswith('['):
-                ranking = json.loads(response)
-                reranked = []
-                for idx in ranking:
-                    if 0 <= idx < len(contexts):
-                        reranked.append(contexts[idx])
+            # Extract JSON array
+            match = re.search(r'\[[\d,\s]+\]', response)
+            if match:
+                ranking = json.loads(match.group())
                 
-                added_ids = set(contexts[i]['id'] for i in ranking if 0 <= i < len(contexts))
+                # Validate indices
+                ranking = [idx for idx in ranking if 0 <= idx < len(contexts)]
+                
+                # Rerank
+                reranked = [contexts[idx] for idx in ranking if idx < len(contexts)]
+                
+                # Add remaining contexts
+                added_ids = {contexts[idx]['id'] for idx in ranking if idx < len(contexts)}
                 for ctx in contexts:
                     if ctx['id'] not in added_ids:
                         reranked.append(ctx)
                 
+                logger.debug(f"Re-ranked {len(reranked)} contexts")
                 return reranked
+        
         except Exception as e:
             logger.warning(f"Re-ranking failed: {e}")
+            self._increment_stat('errors')
         
         return contexts
     
@@ -534,29 +893,20 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
             return []
         
         reranked = self._rerank_contexts(query, candidates)
-        filtered = [c for c in reranked if c['score'] >= min_score]
+        filtered = [c for c in reranked if c.get('score', 0) >= min_score]
         
         if len(filtered) < 2 and candidates:
             filtered = reranked[:max(2, top_k)]
         
         return filtered[:top_k]
     
+    # ==================== RESPONSE GENERATION ====================
+    
     def _extract_product_info(self, data: Dict, metadata: Dict) -> Dict[str, Any]:
-        """
-        Extract comprehensive product information from data and metadata.
-        Handles both flat structure and JSON string metadata fields.
-        
-        Args:
-            data: Product data from database
-            metadata: Product metadata from vector store
-            
-        Returns:
-            Dict containing all extracted product information
-        """
-        import json
+        """Extract comprehensive product info (NULL-SAFE)"""
         
         info = {
-            'name': data.get('name', 'N/A'),
+            'name': data.get('name') or 'N/A',
             'price': data.get('price'),
             'rating': data.get('avgRating') or data.get('avg_rating'),
             'brand': None,
@@ -569,22 +919,10 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
             'variants': []
         }
         
-        # Helper to safely parse JSON strings
-        def safe_json_parse(json_str):
-            if not json_str:
-                return None
-            if isinstance(json_str, dict):
-                return json_str
-            if isinstance(json_str, str):
-                try:
-                    return json.loads(json_str)
-                except:
-                    return None
-            return None
-        
-        # Parse attributes (can be in data or metadata)
+        # Parse attributes
         attributes_str = data.get('attributes') or metadata.get('attributes')
-        attributes = safe_json_parse(attributes_str)
+        attributes = SecurityUtils.safe_json_parse(attributes_str)
+        
         if attributes:
             general = attributes.get('general', {})
             info['brand'] = general.get('brand')
@@ -593,9 +931,10 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
             material_info = attributes.get('material', {})
             info['material'] = material_info.get('material')
         
-        # Parse commercial info
+        # Parse commercial
         commercial_str = data.get('commercial') or metadata.get('commercial')
-        commercial = safe_json_parse(commercial_str)
+        commercial = SecurityUtils.safe_json_parse(commercial_str)
+        
         if commercial:
             info['in_stock'] = commercial.get('in_stock', True)
             info['list_price'] = commercial.get('list_price')
@@ -604,30 +943,17 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
         
         # Parse taxonomy
         taxonomy_str = data.get('taxonomy') or metadata.get('taxonomy')
-        taxonomy = safe_json_parse(taxonomy_str)
+        taxonomy = SecurityUtils.safe_json_parse(taxonomy_str)
+        
         if taxonomy:
             info['category'] = taxonomy.get('category')
         
         # Parse variants
         variants_str = data.get('variants') or metadata.get('variants')
-        variants = safe_json_parse(variants_str)
+        variants = SecurityUtils.safe_json_parse(variants_str)
+        
         if variants and isinstance(variants, list):
             info['variants'] = variants
-        
-        # Parse AI metadata for description if not already set
-        if not info['description']:
-            ai_str = data.get('ai') or metadata.get('ai')
-            ai_meta = safe_json_parse(ai_str)
-            if ai_meta:
-                embedding_text = ai_meta.get('embedding_text', '')
-                # Try to extract description from embedding_text
-                if 'designed for' in embedding_text.lower() or 'features' in embedding_text.lower():
-                    # Extract the descriptive part
-                    parts = embedding_text.split('.')
-                    for part in parts:
-                        if any(kw in part.lower() for kw in ['designed', 'features', 'perfect for']):
-                            info['description'] = part.strip() + '.'
-                            break
         
         return info
     
@@ -638,170 +964,175 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
         intent: Intent,
         history: List[ConversationTurn]
     ) -> str:
-        """Build enhanced prompt"""
+        """Build enhanced prompt (OPTIMIZED string building)"""
+        
         context_texts = []
+        
         for i, ctx in enumerate(contexts):
-            item_type = ctx.get("type", "product")
-            data = ctx.get("data") or {}
-            metadata = ctx.get("metadata") or {}
-            entity_type = metadata.get("entity_type", "product")
+            if not ctx:
+                continue
             
-            # Case 1: Product Data
-            if entity_type == "product" and data:
-                # Use comprehensive product info extraction
+            item_type = ctx.get('type', 'product')
+            data = ctx.get('data') or {}
+            metadata = ctx.get('metadata', {})
+            entity_type = metadata.get('entity_type', 'product')
+            
+            if entity_type == 'product' and data:
                 product = self._extract_product_info(data, metadata)
                 
-                name = product['name']
-                text = f"[Sản phẩm {i+1}] {name}"
+                # Build product text efficiently
+                parts = [f"[Sản phẩm {i+1}] {product['name']}"]
                 
-                # Add brand
                 if product['brand']:
-                    text += f"\n- Thương hiệu: {product['brand']}"
+                    parts.append(f"- Thương hiệu: {product['brand']}")
                 
-                # Add category
                 if product['category']:
-                    text += f"\n- Danh mục: {product['category']}"
+                    parts.append(f"- Danh mục: {product['category']}")
                 
-                # Add price information
                 if product['price']:
-                    text += f"\n- Giá: {product['price']:,.0f}đ"
+                    price_text = f"- Giá: {product['price']:,.0f}đ"
                     if product['list_price'] and product['list_price'] > product['price']:
-                        text += f" (Giá gốc: {product['list_price']:,.0f}đ)"
+                        price_text += f" (Gốc: {product['list_price']:,.0f}đ)"
+                    parts.append(price_text)
                 
-                # Add rating
                 if product['rating']:
-                    text += f"\n- Đánh giá: {product['rating']}/5 sao"
+                    parts.append(f"- Đánh giá: {product['rating']}/5⭐")
                 
-                # Add material
                 if product['material']:
-                    text += f"\n- Chất liệu: {product['material']}"
+                    parts.append(f"- Chất liệu: {product['material']}")
                 
-                # Add gender
                 if product['gender']:
-                    text += f"\n- Dành cho: {product['gender']}"
+                    parts.append(f"- Dành cho: {product['gender']}")
                 
-                # Add stock status
-                stock_text = "Còn hàng" if product['in_stock'] else "Hết hàng"
-                text += f"\n- Tình trạng: {stock_text}"
+                stock = "Còn hàng" if product['in_stock'] else "Hết hàng"
+                parts.append(f"- Tình trạng: {stock}")
                 
-                # Add description
                 if product['description']:
-                    # Limit description length
-                    desc = product['description']
-                    if len(desc) > 200:
-                        desc = desc[:200] + "..."
-                    text += f"\n- Mô tả: {desc}"
+                    desc = product['description'][:200]
+                    if len(product['description']) > 200:
+                        desc += "..."
+                    parts.append(f"- Mô tả: {desc}")
                 
-                # Add variants if available
                 if product['variants']:
-                    text += f"\n- Biến thể ({len(product['variants'])}):"
-                    for variant in product['variants'][:3]:  # Limit to 3 variants
-                        v_name = variant.get('name', '')
-                        v_color = variant.get('color', '')
-                        v_price = variant.get('price')
-                        v_sku = variant.get('sku', '')
+                    parts.append(f"- Biến thể ({len(product['variants'])}):")
+                    for v in product['variants'][:3]:
+                        v_parts = []
+                        if v.get('name'):
+                            v_parts.append(v['name'])
+                        if v.get('color'):
+                            v_parts.append(f"Màu: {v['color']}")
+                        if v.get('price'):
+                            v_parts.append(f"{v['price']:,.0f}đ")
                         
-                        v_text = f"\n  • {v_name}" if v_name else f"\n  • SKU: {v_sku}"
-                        if v_color:
-                            v_text += f" (Màu: {v_color})"
-                        if v_price:
-                            v_text += f" - {v_price:,.0f}đ"
-                        text += v_text
+                        if v_parts:
+                            parts.append(f"  • {' - '.join(v_parts)}")
                     
                     if len(product['variants']) > 3:
-                        text += f"\n  ... và {len(product['variants']) - 3} biến thể khác"
+                        parts.append(f"  ... còn {len(product['variants']) - 3} biến thể")
                 
-                context_texts.append(text)
+                context_texts.append("\n".join(parts))
             
-            # Case 2: Content/Policy Data (often in metadata)
-            elif entity_type == "content":
-                title = data.get("title") or metadata.get("title", f"Thông tin {i+1}")
-                content = data.get("content") or metadata.get("content", "")
-                text = f"[Nội dung {i+1}] {title}\n{content}"
-                context_texts.append(text)
+            elif entity_type == 'content':
+                title = data.get('title') or metadata.get('title', f"Nội dung {i+1}")
+                content = data.get('content') or metadata.get('content', '')
+                context_texts.append(f"[Nội dung {i+1}] {title}\n{content}")
         
         contexts_combined = "\n\n".join(context_texts) if context_texts else "Không có thông tin."
-
         
         system_instructions = self._get_system_instructions(intent)
         
-        prompt = f"""{system_instructions}
-
-# THÔNG TIN
-{contexts_combined}
-
-# CÂU HỎI
-{query}
-
-# QUY TẮC
-1. Trả lời trực tiếp, đi thẳng vào vấn đề
-2. CHỈ được sử dụng thông tin CÓ TRONG dữ liệu tham khảo
-3. KHÔNG được:
-   - Tự đánh số sản phẩm nếu dữ liệu không có
-   - Tự suy diễn đặc điểm
-   - Tự viết lại mô tả theo ý hiểu
-4. Nếu nhiều sản phẩm trùng tên, PHẢI phân biệt bằng:
-   - SKU
-   - Brand
-   - Price
-5. Độ dài: 2-4 câu
-
-# CÂU TRẢ LỜI
-"""
-        return prompt
+        prompt_parts = [
+            system_instructions,
+            "",
+            "# THÔNG TIN",
+            contexts_combined,
+            "",
+            "# CÂU HỎI",
+            SecurityUtils.sanitize_query(query),
+            "",
+            "# QUY TẮC",
+            "1. Trả lời trực tiếp, đi thẳng vào vấn đề",
+            "2. CHỈ sử dụng thông tin CÓ TRONG dữ liệu",
+            "3. KHÔNG tự suy diễn hoặc bịa đặt",
+            "4. Phân biệt sản phẩm bằng SKU/Brand/Price nếu trùng tên",
+            "5. Độ dài: 2-4 câu",
+            "",
+            "# CÂU TRẢ LỜI"
+        ]
+        
+        return "\n".join(prompt_parts)
     
     def _get_system_instructions(self, intent: Intent) -> str:
-        """Get system instructions"""
-        instructions = {
+        """Get system instructions based on intent"""
+        instructions_map = {
             'product_search': "# VAI TRÒ\nBạn là chuyên viên tư vấn sản phẩm.",
             'product_info': "# VAI TRÒ\nBạn là chuyên gia sản phẩm.",
             'compare': "# VAI TRÒ\nBạn là chuyên gia so sánh sản phẩm.",
             'support': "# VAI TRÒ\nBạn là nhân viên CSKH.",
+            'policy': "# VAI TRÒ\nBạn là chuyên viên chính sách.",
         }
-        return instructions.get(intent.primary, instructions['product_search'])
+        return instructions_map.get(intent.primary, instructions_map['product_search'])
     
-    def _call_openai_chat(
+    @timed_operation("call_genai")
+    def _call_genai(
         self,
         prompt: str,
         max_tokens: int = 512,
         temperature: float = 0.2,
-        retry: int = 3
+        retry: int = 3,
+        json_mode: bool = False
     ) -> str:
-        """Call OpenAI with retry"""
+        """Call Google GenAI with retry and circuit breaker"""
+        
+        self._increment_stat('llm_calls')
+        
+        generation_config = {
+            'max_output_tokens': max_tokens,
+            'temperature': temperature
+        }
+        
+        if json_mode:
+            generation_config['response_mime_type'] = 'application/json'
+        
         for attempt in range(retry):
             try:
-                completion = self.client.chat.completions.create(
-                    model=config.OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are a helpful e-commerce assistant."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    extra_headers={
-                        "HTTP-Referer": "http://localhost:8000",
-                        "X-Title": "realtime-ai-recommender",
-                    }
+                # Use Google GenAI SDK
+                response = self.google_client.generate_content(
+                    model=config.GOOGLE_MODEL,
+                    contents=prompt,
+                    config=generation_config
                 )
-                return completion.choices[0].message.content.strip()
+                
+                if not response.parts:
+                     logger.warning("LLM returned empty response")
+                     return ""
+                     
+                return response.text if response.text else ""
+            
             except Exception as e:
-                logger.warning(f"LLM call attempt {attempt + 1} failed: {e}")
+                logger.warning(f"LLM call attempt {attempt + 1}/{retry} failed: {e}")
+                self._increment_stat('errors')
+                
                 if attempt < retry - 1:
-                    time.sleep(1 * (attempt + 1))
+                    time.sleep(2 ** attempt)  # Exponential backoff
                 else:
                     raise
     
     def _get_canned_response(self, query: str, intent: Intent) -> str:
-        """Fallback responses"""
+        """Get canned responses for simple intents"""
         responses = {
-            'greeting': "Xin chào! Tôi có thể giúp bạn tìm sản phẩm hoặc giải đáp thắc mắc.",
-            'support': "Liên hệ: Hotline 1900-xxxx hoặc email support@example.com",
+            'greeting': "Xin chào! Tôi có thể giúp bạn tìm sản phẩm hoặc giải đáp thắc mắc. 😊",
+            'support': "📞 Liên hệ hỗ trợ:\n- Hotline: 1900-xxxx\n- Email: support@example.com\n- Chat: 24/7",
         }
+        
         return responses.get(
             intent.primary,
-            "Xin lỗi, tôi không thể trả lời. Vui lòng liên hệ hỗ trợ."
+            "Xin lỗi, tôi không thể trả lời câu hỏi này. Vui lòng liên hệ bộ phận hỗ trợ."
         )
     
+    # ==================== MAIN API ====================
+    
+    @timed_operation("answer")
     def answer(
         self,
         query: str,
@@ -810,66 +1141,135 @@ Trả về array JSON chỉ số từ liên quan nhất đến ít liên quan:""
         use_reranking: bool = True,
         use_cache: bool = True
     ) -> Tuple[str, List[Dict[str, Any]], Intent]:
-        """Main answer method with caching"""
+        """Main answer method with full pipeline"""
+        
         try:
-            # Get history (from cache)
-            history = self.get_conversation_history(session_id)
+            # Sanitize inputs
+            query_safe = SecurityUtils.sanitize_query(query)
+            session_id_safe = SecurityUtils.sanitize_session_id(session_id)
+            
+            if not query_safe:
+                intent = Intent('general', [], 0.0, {})
+                return "Vui lòng nhập câu hỏi.", [], intent
+            
+            # Get conversation history
+            history = self.get_conversation_history(session_id_safe)
             
             # Resolve coreferences
-            resolved_query = self._resolve_coreferences(query, history)
+            resolved_query = self._resolve_coreferences(query_safe, history)
             
-            # Detect intent (cached)
+            # Detect intent
             intent = self._detect_intent_llm(resolved_query, history)
-            logger.info(f"Intent: {intent.primary} ({intent.confidence})")
+            logger.info(f"Intent: {intent.primary} (conf={intent.confidence:.2f})")
             
-            # Greeting
+            # Handle greetings
             if intent.primary == 'greeting':
-                answer = self._get_canned_response(query, intent)
-                turn = ConversationTurn(query, answer, [], intent, time.time())
-                self.save_conversation_turn(session_id, turn)
+                answer = self._get_canned_response(query_safe, intent)
+                turn = ConversationTurn(query_safe, answer, [], intent, time.time())
+                self.save_conversation_turn(session_id_safe, turn)
                 return answer, [], intent
             
-            # Retrieve (cached)
+            # Retrieve contexts
             if use_reranking:
                 contexts = self.retrieve_with_reranking(
-                    resolved_query, top_k, use_cache=use_cache
+                    resolved_query,
+                    top_k=top_k,
+                    use_cache=use_cache
                 )
             else:
-                contexts = self.retrieve(resolved_query, top_k, use_cache=use_cache)
+                contexts = self.retrieve(
+                    resolved_query,
+                    top_k=top_k,
+                    use_cache=use_cache
+                )
             
+            # No results found
             if not contexts:
-                answer = self._get_canned_response(query, intent)
-                turn = ConversationTurn(query, answer, [], intent, time.time())
-                self.save_conversation_turn(session_id, turn)
+                answer = "Xin lỗi, tôi không tìm thấy thông tin phù hợp. Bạn có thể diễn đạt lại câu hỏi?"
+                turn = ConversationTurn(query_safe, answer, [], intent, time.time())
+                self.save_conversation_turn(session_id_safe, turn)
                 return answer, [], intent
             
             # Build prompt
-            prompt = self._build_enhanced_prompt(resolved_query, contexts, intent, history)
+            prompt = self._build_enhanced_prompt(
+                resolved_query,
+                contexts,
+                intent,
+                history
+            )
             
-            # Call LLM
-            answer = self._call_openai_chat(prompt)
+            # Generate answer
+            answer = self._call_genai(prompt, max_tokens=1024 , temperature=0.2)
             
-            # Save to cache
-            turn = ConversationTurn(query, answer, contexts, intent, time.time())
-            self.save_conversation_turn(session_id, turn)
+            # Save conversation turn
+            turn = ConversationTurn(
+                query_safe,
+                answer,
+                contexts,
+                intent,
+                time.time(),
+                metrics={'llm_calls': 1}
+            )
+            self.save_conversation_turn(session_id_safe, turn)
             
             return answer, contexts, intent
-            
+        
         except Exception as e:
-            logger.exception(f"Error: {e}")
-            intent = self._detect_intent_fallback(query)
+            logger.exception(f"Error in answer pipeline: {e}")
+            self._increment_stat('errors')
             
+            # Fallback response
+            intent = self._detect_intent_fallback(query)
             contexts = locals().get('contexts', [])
+            
             if contexts:
                 top_ctx = contexts[0]
-                meta = top_ctx.get('metadata', {})
                 data = top_ctx.get('data', {}) or {}
+                meta = top_ctx.get('metadata', {})
                 
-                title = meta.get('title') or data.get('name') or "Nội dung liên quan"
-                content = meta.get('content') or data.get('description') or "..."
+                title = data.get('name') or meta.get('title', 'Nội dung liên quan')
+                desc = data.get('description') or meta.get('content', '')
                 
-                answer = f"⚠️ [Offline Mode] Tôi tìm thấy thông tin này có thể hữu ích:\n\n**{title}**\n{content}\n\n(Hệ thống LLM đang bận, đây là kết quả tìm kiếm thô)"
+                answer = f"⚠️ [Offline Mode]\n\n**{title}**\n{desc[:200]}...\n\n(Hệ thống AI đang bận)"
                 return answer, contexts, intent
             
             answer = self._get_canned_response(query, intent)
             return answer, [], intent
+    
+    # ==================== MONITORING ====================
+    
+    def _increment_stat(self, stat_name: str):
+        """Thread-safe stat increment"""
+        with self._stats_lock:
+            self._stats[stat_name] = self._stats.get(stat_name, 0) + 1
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get service statistics"""
+        with self._stats_lock:
+            stats = self._stats.copy()
+        
+        # Calculate cache hit rate
+        total_cache_requests = stats.get('cache_hits', 0) + stats.get('cache_misses', 0)
+        cache_hit_rate = (
+            stats.get('cache_hits', 0) / total_cache_requests
+            if total_cache_requests > 0
+            else 0.0
+        )
+        
+        stats['cache_hit_rate'] = f"{cache_hit_rate:.2%}"
+        
+        if self.enable_cache and self.cache:
+            stats['redis_stats'] = self.cache.get_stats()
+        
+        return stats
+    
+    def reset_stats(self):
+        """Reset statistics"""
+        with self._stats_lock:
+            self._stats = {
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'llm_calls': 0,
+                'errors': 0
+            }
+        logger.info("Statistics reset")

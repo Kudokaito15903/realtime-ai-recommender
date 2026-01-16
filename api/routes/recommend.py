@@ -141,10 +141,10 @@ async def get_personalized_recommendations(
             recommendations = product_recommender.get_als_recommendations(
                 user_id=user_id, limit=limit, train_if_missing=True
             )
-        elif m == "session":
-            recommendations = product_recommender.get_session_based_recommendations(
-                user_id=user_id, limit=limit, recent_k=recent_k
-            )
+        # elif m == "session":
+        #     recommendations = product_recommender.get_session_based_recommendations(
+        #         user_id=user_id, limit=limit, recent_k=recent_k
+        #     )
         elif m == "hybrid":
             recommendations = product_recommender.get_hybrid_recommendations(
                 user_id=user_id, limit=limit

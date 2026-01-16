@@ -32,7 +32,7 @@ class ProductEmbeddingModel:
     _instance = None
     _lock = threading.Lock()
 
-    MODEL_NAME = "all-MiniLM-L6-v2"
+    MODEL_NAME = "intfloat/multilingual-e5-base"
 
     def __new__(cls):
         with cls._lock:

@@ -9,7 +9,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 from loguru import logger
 from pinecone import Pinecone, ServerlessSpec
-
+from config import VECTOR_DIMENSION
 from adapters.interfaces import VectorStoreInterface
 
 
@@ -21,7 +21,7 @@ class PineconeVectorStore(VectorStoreInterface):
         api_key: str,
         environment: str = "us-east-1-aws",
         index_name: str = "product-recommendations",
-        dimension: int = 384,
+        dimension: int = VECTOR_DIMENSION,
     ):
         self.api_key = api_key
         self.environment = environment
@@ -245,7 +245,7 @@ def get_pinecone_vector_store() -> PineconeVectorStore:
 
     environment = os.getenv("PINECONE_ENVIRONMENT", "us-east-1-aws")
     index_name = os.getenv("PINECONE_INDEX_NAME", "product-recommendations")
-    dimension = int(os.getenv("VECTOR_DIMENSION", "384"))
+    dimension =VECTOR_DIMENSION
 
     return PineconeVectorStore(
         api_key=api_key,

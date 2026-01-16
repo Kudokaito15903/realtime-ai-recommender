@@ -4,6 +4,7 @@ from typing import Optional
 from services.chatbot_service import ChatbotService
 import time
 router = APIRouter()
+# Trigger reload for caching update v2
 
 class ChatRequest(BaseModel):
     user_id: Optional[str] = None
@@ -28,8 +29,7 @@ async def chat(req: ChatRequest):
                 "product_info": "Trả lời về thông tin sản phẩm",
                 "compare": "So sánh sản phẩm",
                 "policy": "Thông tin chính sách",
-                "cskh": "Chăm sóc khách hàng tự động",
-                "realtime": "Dữ liệu realtime (tồn kho, giá, đánh giá)"
+                "cskh": "Chăm sóc khách hàng tự động"
             }
         }
     except Exception as e:

@@ -1,8 +1,3 @@
-"""
-Enhanced Chatbot Service with Redis Cache Integration - IMPROVED VERSION
-Fixes: Security, Performance, Race Conditions, Error Handling
-"""
-
 import os
 import time
 import json
@@ -71,14 +66,11 @@ class SecurityUtils:
         """Repair common JSON errors (unquoted keys, single quotes)"""
         # Add quotes to unquoted keys
         json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
-        # Replace single quotes with double quotes for string values (simple case)
-        # This is risky for nested quotes but helpful for simple loose JSON
-        # json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str) 
         return json_str
 
     @staticmethod
     def safe_json_parse(json_str: Any) -> Optional[Dict]:
-        """Safely parse JSON with proper error handling"""
+        """Safely parse JSON with improved error handling for LLM responses"""
         if not json_str:
             return None
         
@@ -86,15 +78,53 @@ class SecurityUtils:
             return json_str
         
         if isinstance(json_str, str):
+            original_str = json_str
+            
+            # ✅ FIX 1: Remove common LLM preambles
+            json_str = re.sub(
+                r'^(Here is the JSON.*?:|Sure[,!].*?:|Here you go.*?:|```json\s*|```\s*)', 
+                '', 
+                json_str, 
+                flags=re.IGNORECASE | re.MULTILINE
+            ).strip()
+            
+            # ✅ FIX 2: Remove trailing markdown
+            json_str = re.sub(r'```\s*$', '', json_str).strip()
+            
+            # ✅ FIX 3: Remove any leading/trailing whitespace and newlines
+            json_str = json_str.strip()
+            
             try:
                 return json.loads(json_str)
             except json.JSONDecodeError:
+                # ✅ FIX 4: Try to extract JSON object using regex
+                match = re.search(r'(\{.*\})', json_str, re.DOTALL)
+                if match:
+                    try:
+                        extracted = match.group(1).strip()
+                        return json.loads(extracted)
+                    except json.JSONDecodeError:
+                        pass
+                
+                # ✅ FIX 5: Try to extract JSON array
+                match = re.search(r'(\[.*\])', json_str, re.DOTALL)
+                if match:
+                    try:
+                        extracted = match.group(1).strip()
+                        return json.loads(extracted)
+                    except json.JSONDecodeError:
+                        pass
+                
                 # Try to repair
                 try:
                     repaired = SecurityUtils.repair_json(json_str)
                     return json.loads(repaired)
                 except Exception as e:
-                    logger.warning(f"JSON decode error: {e}. Content: {json_str[:100]}...")
+                    logger.warning(
+                        f"JSON decode error: {e}. "
+                        f"Original: {original_str[:100]}... "
+                        f"Cleaned: {json_str[:100]}..."
+                    )
                     return None
             except Exception as e:
                 logger.error(f"Unexpected error parsing JSON: {e}")
@@ -261,7 +291,7 @@ class GoogleGenAIClientSingleton:
 # ==================== MAIN CHATBOT SERVICE ====================
 
 class ChatbotService:
-    """Enhanced Chatbot Service with Security, Performance, and Reliability Improvements"""
+    """Enhanced Chatbot Service with Fixed JSON Parsing and Dynamic Prompting"""
     
     def __init__(
         self,
@@ -304,6 +334,7 @@ class ChatbotService:
             'query_result_ttl': 180,
             'conversation_ttl': 1800,
             'intent_ttl': 600,
+            'response_ttl': 3600,  # Cache full responses for 1 hour
         }
         
         # Performance monitoring
@@ -535,7 +566,6 @@ class ChatbotService:
             self.cache.delete(product_id, prefix='product')
             
             # Invalidate related query results
-            # Use pattern matching carefully
             try:
                 pattern = f"{self.cache.PREFIXES.get('query_result', 'qr')}:*"
                 for key in self.cache.scan_iter(pattern):
@@ -584,7 +614,7 @@ class ChatbotService:
     
     @timed_operation("detect_intent")
     def _detect_intent_llm(self, query: str, history: List[ConversationTurn]) -> Intent:
-        """Advanced intent detection using LLM with caching"""
+        """Advanced intent detection using LLM with improved JSON parsing"""
         
         # Sanitize query
         query_safe = SecurityUtils.sanitize_query(query)
@@ -622,12 +652,12 @@ Intent types:
 - product_info: Hỏi chi tiết sản phẩm
 - compare: So sánh
 - stock_check: Kiểm tra tồn kho
-- policy: Chính sách
+- policy: Chính sách (thanh toán, đổi trả, vận chuyển, bảo mật)
 - support: Hỗ trợ
 - greeting: Chào hỏi
 - general: Chung
 
-Trả về JSON object hợp lệ (không markdown, không backticks):
+Trả về ĐÚNG FORMAT JSON sau (KHÔNG thêm markdown, preamble):
 {{
   "primary_intent": "string",
   "secondary_intents": ["string"],
@@ -642,29 +672,39 @@ Trả về JSON object hợp lệ (không markdown, không backticks):
         try:
             response = self._call_genai(
                 intent_prompt,
-                max_tokens=300,
+                max_tokens=400,  # ✅ Increased from 300
                 temperature=0.1,
                 json_mode=True
             )
             
-            # Clean response
+            # ✅ IMPROVED CLEANING
+            original_response = response
             response = response.strip()
             
-            # Extract JSON object using regex (finds outermost braces)
+            # Remove preambles and markdown
+            response = re.sub(
+                r'^(Here is the JSON.*?:|Sure[,!].*?:|Here you go.*?:|```json\s*|```\s*)', 
+                '', 
+                response, 
+                flags=re.IGNORECASE | re.MULTILINE
+            ).strip()
+            
+            # Remove trailing markdown
+            response = re.sub(r'```\s*$', '', response).strip()
+            
+            # Extract JSON object
             match = re.search(r'(\{.*\})', response, re.DOTALL)
             if match:
-                response = match.group(1)
-            else:
-                # Fallback cleanup
-                response = re.sub(r'^```json?\s*|\s*```$', '', response, flags=re.MULTILINE)
+                response = match.group(1).strip()
             
-            logger.debug(f"LLM Raw Intent Response: {response}")
+            logger.debug(f"LLM Intent - Original: {original_response[:100]}...")
+            logger.debug(f"LLM Intent - Cleaned: {response[:200]}...")
 
             # Parse JSON safely
             intent_data = SecurityUtils.safe_json_parse(response)
             
             if not intent_data:
-                logger.warning("LLM returned invalid JSON for intent")
+                logger.warning("LLM returned invalid JSON for intent, using fallback")
                 return self._detect_intent_fallback(query)
             
             intent = Intent(
@@ -673,6 +713,8 @@ Trả về JSON object hợp lệ (không markdown, không backticks):
                 confidence=intent_data.get('confidence', 0.7),
                 entities=intent_data.get('entities', {})
             )
+            
+            logger.info(f"✅ Intent detected: {intent.primary} (confidence: {intent.confidence:.2f})")
             
             # Cache the intent
             if self.enable_cache and self.cache:
@@ -699,15 +741,17 @@ Trả về JSON object hợp lệ (không markdown, không backticks):
             (['xin chào', 'hello', 'hi', 'chào'], 'greeting', 0.9),
             (['so sánh', 'compare', 'khác nhau'], 'compare', 0.8),
             (['còn hàng', 'hết hàng', 'tồn kho'], 'stock_check', 0.8),
-            (['chính sách', 'đổi trả', 'bảo hành', 'thanh toán', 'trả tiền'], 'policy', 0.8),
+            (['chính sách', 'đổi trả', 'bảo hành', 'thanh toán', 'trả tiền', 'phương thức'], 'policy', 0.8),
             (['hỗ trợ', 'liên hệ', 'hotline'], 'support', 0.8),
             (['thông số', 'chi tiết', 'giá'], 'product_info', 0.7),
         ]
         
         for keywords, intent, confidence in rules:
             if any(kw in query_lower for kw in keywords):
+                logger.info(f"✅ Fallback intent: {intent} (confidence: {confidence:.2f})")
                 return Intent(intent, [], confidence, {})
         
+        logger.info("✅ Default intent: product_search")
         return Intent('product_search', [], 0.6, {})
     
     # ==================== RETRIEVAL ====================
@@ -825,7 +869,7 @@ Trả về JSON object hợp lệ (không markdown, không backticks):
                     desc = data.get('description', '')[:100]
                     context_descs.append(f"{i}. {name} - {desc}")
                 else:
-                    title = data.get('title', 'N/A')
+                    title = data.get('title') or ctx.get('metadata', {}).get('title', 'N/A')
                     content = data.get('content', '')[:100]
                     context_descs.append(f"{i}. {title} - {content}")
             
@@ -842,7 +886,7 @@ Mục:
 Trả về JSON array chứa các chỉ số (index) của các mục có liên quan nhất, sắp xếp từ cao đến thấp.
 Ví dụ: [0, 2, 1]
 
-Trả về JSON:"""
+Chỉ trả về JSON array, không thêm text khác:"""
             
             response = self._call_genai(
                 rerank_prompt,
@@ -957,6 +1001,101 @@ Trả về JSON:"""
         
         return info
     
+    def _get_system_instructions(self, intent: Intent) -> str:
+        """Get system instructions based on intent with improved formatting"""
+        instructions_map = {
+            'product_search': """# VAI TRÒ
+Bạn là chuyên viên tư vấn sản phẩm thân thiện và chuyên nghiệp.""",
+            
+            'product_info': """# VAI TRÒ
+Bạn là chuyên gia sản phẩm với kiến thức sâu rộng.""",
+            
+            'compare': """# VAI TRÒ
+Bạn là chuyên gia so sánh sản phẩm khách quan và chi tiết.""",
+            
+            'support': """# VAI TRÒ
+Bạn là nhân viên CSKH nhiệt tình, sẵn sàng hỗ trợ.""",
+            
+            'policy': """# VAI TRÒ
+Bạn là chuyên viên chính sách, giải thích rõ ràng và đầy đủ.
+
+# ĐẶC BIỆT QUAN TRỌNG
+- Khi khách hỏi về "các phương thức", "phương thức nào", "có những gì": PHẢI liệt kê ĐẦY ĐỦ TẤT CẢ
+- KHÔNG rút gọn hoặc bỏ sót bất kỳ thông tin nào
+- Sử dụng numbered list (1., 2., 3.) để liệt kê rõ ràng
+- Bao gồm chi tiết quan trọng (số tài khoản, hotline, thời gian, phí...)""",
+            
+            'stock_check': """# VAI TRÒ
+Bạn là chuyên viên kiểm tra tồn kho.""",
+        }
+        return instructions_map.get(intent.primary, instructions_map['product_search'])
+    
+    def _get_formatting_guide(self, intent: Intent) -> str:
+        """Get formatting guide based on intent"""
+        guides = {
+            'policy': """
+# HƯỚNG DẪN ĐỊNH DẠNG
+- Với câu hỏi "có những...", "các...", "phương thức nào": Liệt kê ĐẦY ĐỦ bằng numbered list
+- Với quy trình: Trình bày từng bước (Bước 1, Bước 2...)
+- Với điều kiện: Dùng bullet points (-)
+- Bao gồm CHI TIẾT QUAN TRỌNG: số tài khoản, hotline, email, địa chỉ, thời gian, phí
+- KHÔNG rút gọn thông tin quan trọng""",
+            
+            'compare': """
+# HƯỚNG DẪN ĐỊNH DẠNG
+- So sánh theo từng tiêu chí rõ ràng
+- Dùng bảng hoặc bullet points
+- Nêu rõ điểm mạnh/yếu từng sản phẩm""",
+            
+            'product_search': """
+# HƯỚNG DẪN ĐỊNH DẠNG
+- Giới thiệu 2-3 sản phẩm phù hợp nhất
+- Đề cập giá, đặc điểm nổi bật
+- Ngắn gọn, dễ đọc""",
+            
+            'product_info': """
+# HƯỚNG DẪN ĐỊNH DẠNG
+- Trình bày thông tin theo thứ tự: Tên, Giá, Đặc điểm, Chất liệu
+- Ngắn gọn 3-4 câu""",
+        }
+        return guides.get(intent.primary, "")
+    
+    def _get_dynamic_rules(self, intent: Intent) -> List[str]:
+        """Get dynamic rules based on intent"""
+        base_rules = [
+            "1. Trả lời trực tiếp, đi thẳng vào vấn đề",
+            "2. CHỈ sử dụng thông tin CÓ TRONG dữ liệu",
+            "3. KHÔNG tự suy diễn hoặc bịa đặt",
+            "4. Hoàn thành câu trả lời đầy đủ, không cắt ngang giữa câu"
+        ]
+        
+        if intent.primary == 'policy':
+            base_rules.extend([
+                "4. Với câu hỏi liệt kê: Liệt kê ĐẦY ĐỦ TẤT CẢ, KHÔNG bỏ sót",
+                "5. Bao gồm CHI TIẾT: số tài khoản, hotline, email, địa chỉ, thời gian",
+                "6. Sử dụng numbered list hoặc bullet points để dễ đọc"
+            ])
+        elif intent.primary == 'product_info':
+            base_rules.extend([
+                "4. Phân biệt sản phẩm bằng SKU/Brand/Price nếu trùng tên",
+                "5. Độ dài: 3-4 câu"
+            ])
+        elif intent.primary == 'compare':
+            base_rules.extend([
+                "4. So sánh theo bảng hoặc bullet points",
+                "5. Nêu rõ điểm mạnh/yếu từng sản phẩm"
+            ])
+        elif intent.primary == 'product_search':
+            base_rules.extend([
+                "4. Nếu tìm thấy sản phẩm: Giới thiệu 2-3 sản phẩm phù hợp nhất",
+                "5. Nếu không tìm thấy sản phẩm: Trả lời với thông tin tìm kiếm không tìm thấy",
+                "6. Độ dài: 3-5 câu"
+            ])
+        else:
+            base_rules.append("4. Trả lời đầy đủ và rõ ràng")
+        
+        return base_rules
+    
     def _build_enhanced_prompt(
         self,
         query: str,
@@ -964,7 +1103,7 @@ Trả về JSON:"""
         intent: Intent,
         history: List[ConversationTurn]
     ) -> str:
-        """Build enhanced prompt (OPTIMIZED string building)"""
+        """Build enhanced prompt with dynamic formatting"""
         
         context_texts = []
         
@@ -1035,14 +1174,26 @@ Trả về JSON:"""
             elif entity_type == 'content':
                 title = data.get('title') or metadata.get('title', f"Nội dung {i+1}")
                 content = data.get('content') or metadata.get('content', '')
-                context_texts.append(f"[Nội dung {i+1}] {title}\n{content}")
+                
+                # ✅ For policy content, preserve full content
+                if intent.primary == 'policy':
+                    context_texts.append(f"[Thông tin {i+1}] {title}\n{content}")
+                else:
+                    # For other intents, can truncate
+                    content_preview = content[:500] if len(content) > 500 else content
+                    if len(content) > 500:
+                        content_preview += "..."
+                    context_texts.append(f"[Nội dung {i+1}] {title}\n{content_preview}")
         
         contexts_combined = "\n\n".join(context_texts) if context_texts else "Không có thông tin."
         
         system_instructions = self._get_system_instructions(intent)
+        formatting_guide = self._get_formatting_guide(intent)
+        dynamic_rules = self._get_dynamic_rules(intent)
         
         prompt_parts = [
             system_instructions,
+            formatting_guide,
             "",
             "# THÔNG TIN",
             contexts_combined,
@@ -1051,27 +1202,12 @@ Trả về JSON:"""
             SecurityUtils.sanitize_query(query),
             "",
             "# QUY TẮC",
-            "1. Trả lời trực tiếp, đi thẳng vào vấn đề",
-            "2. CHỈ sử dụng thông tin CÓ TRONG dữ liệu",
-            "3. KHÔNG tự suy diễn hoặc bịa đặt",
-            "4. Phân biệt sản phẩm bằng SKU/Brand/Price nếu trùng tên",
-            "5. Độ dài: 2-4 câu",
+            *dynamic_rules,
             "",
             "# CÂU TRẢ LỜI"
         ]
         
         return "\n".join(prompt_parts)
-    
-    def _get_system_instructions(self, intent: Intent) -> str:
-        """Get system instructions based on intent"""
-        instructions_map = {
-            'product_search': "# VAI TRÒ\nBạn là chuyên viên tư vấn sản phẩm.",
-            'product_info': "# VAI TRÒ\nBạn là chuyên gia sản phẩm.",
-            'compare': "# VAI TRÒ\nBạn là chuyên gia so sánh sản phẩm.",
-            'support': "# VAI TRÒ\nBạn là nhân viên CSKH.",
-            'policy': "# VAI TRÒ\nBạn là chuyên viên chính sách.",
-        }
-        return instructions_map.get(intent.primary, instructions_map['product_search'])
     
     @timed_operation("call_genai")
     def _call_genai(
@@ -1168,7 +1304,36 @@ Trả về JSON:"""
                 turn = ConversationTurn(query_safe, answer, [], intent, time.time())
                 self.save_conversation_turn(session_id_safe, turn)
                 return answer, [], intent
-            
+
+            # Check for cached response (only if not greeting)
+            if use_cache and self.enable_cache and self.cache:
+                # Use resolved query and intent for more robust cache key
+                # We include intent to differentiate if same query led to different intent (unlikely but safer)
+                cache_key_str = f"response:{resolved_query}:{intent.primary}:{top_k}"
+                cache_key = hashlib.md5(cache_key_str.encode()).hexdigest()
+                
+                cached_response = self.cache.get(cache_key, prefix='query_result')
+                if cached_response:
+                    logger.info(f"✅ Response cache HIT for '{resolved_query}'")
+                    self._increment_stat('cache_hits')
+                    
+                    # Reconstruct objects
+                    cached_answer = cached_response.get('answer')
+                    cached_contexts = cached_response.get('contexts', [])
+                    # intent is already derived fresh, but we could use cached one if we cached it too
+                    # current flow: fresh intent -> check cache -> return
+                    
+                    turn = ConversationTurn(
+                        query_safe, 
+                        cached_answer, 
+                        cached_contexts, 
+                        intent, 
+                        time.time(),
+                        metrics={'cache_hit': True}
+                    )
+                    self.save_conversation_turn(session_id_safe, turn)
+                    return cached_answer, cached_contexts, intent
+
             # Retrieve contexts
             if use_reranking:
                 contexts = self.retrieve_with_reranking(
@@ -1198,10 +1363,9 @@ Trả về JSON:"""
                 history
             )
             
-            # Generate answer
-            answer = self._call_genai(prompt, max_tokens=1024 , temperature=0.2)
+            max_tokens = 1536 if intent.primary == 'policy' else 1024  
+            answer = self._call_genai(prompt, max_tokens=max_tokens, temperature=0.2)
             
-            # Save conversation turn
             turn = ConversationTurn(
                 query_safe,
                 answer,
@@ -1212,6 +1376,32 @@ Trả về JSON:"""
             )
             self.save_conversation_turn(session_id_safe, turn)
             
+            logger.info(f"✅ Answer generated ({len(answer)} chars)")
+            
+            # Cache the response
+            if use_cache and self.enable_cache and self.cache:
+                try:
+                    # Reuse the key calculation logic or re-calculate
+                    cache_key_str = f"response:{resolved_query}:{intent.primary}:{top_k}"
+                    cache_key = hashlib.md5(cache_key_str.encode()).hexdigest()
+                    
+                    cache_data = {
+                        'answer': answer,
+                        'contexts': contexts,
+                        'intent': intent.to_dict(),
+                        'timestamp': time.time()
+                    }
+                    
+                    self.cache.set(
+                        cache_key,
+                        cache_data,
+                        prefix='query_result',
+                        ttl=self.CACHE_CONFIG['response_ttl']
+                    )
+                    logger.debug(f"Cached response for '{resolved_query}'")
+                except Exception as e:
+                    logger.warning(f"Failed to cache response: {e}")
+
             return answer, contexts, intent
         
         except Exception as e:

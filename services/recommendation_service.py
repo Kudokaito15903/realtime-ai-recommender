@@ -104,6 +104,9 @@ class RecommendationService:
             if p["product_id"] != product_id
         ][:limit]
 
+        # Enrich with metadata
+        results = self._enrich_candidates_with_metadata(results, user_context={})
+
         logger.debug(
             f"Found {len(results)} similar products in {time.time() - start_time:.4f}s"
         )
@@ -131,6 +134,9 @@ class RecommendationService:
             }
             for p in similar_products
         ][:limit]
+
+        # Enrich with metadata
+        results = self._enrich_candidates_with_metadata(results, user_context={})
 
         logger.debug(
             f"Found {len(results)} products for text query in {time.time() - start_time:.4f}s"
@@ -619,7 +625,6 @@ class RecommendationService:
             logger.warning(f"ALS recommendations failed: {e}")
 
         # 3. Call session recommender
-        # 3. Call session recommender
         # try:
         #     session_recs = self.get_session_based_recommendations(
         #         user_id=user_id, limit=max(limit, 20)
@@ -820,7 +825,8 @@ class RecommendationService:
                         enriched_candidate.update(
                             {
                                 "price": product.get("price", 0),
-                                "category": product.get("category", ""),
+                                "category": product.get("category") or product.get("catregory") or (product.get("categories")[0].get("name") if product.get("categories") else "") or "",
+                                "brandName": product.get("brandName") or product.get("brand") or "",
                                 "sold": product.get("sold", 0),
                                 "avgRating": product.get("avgRating", 0),
                                 "status": product.get("status", "active"),

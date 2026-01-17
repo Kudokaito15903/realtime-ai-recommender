@@ -87,9 +87,8 @@ class KafkaEventProcessor:
 
 
         event = {
-            "event_type": event_type,
-            "entity_type": self.entity_type,
-            "entity_id": entity_id, 
+            "eventType": event_type,
+            "entityId": entity_id, 
             "data": data,
             "timestamp": time.time(),
         }

@@ -8,6 +8,11 @@ from typing import List, Dict, Any, Optional, Callable
 import numpy as np
 
 
+class ProductStoreError(Exception):
+    """Base exception for product store errors"""
+    pass
+
+
 class VectorStoreInterface(ABC):
     """Abstract interface for vector storage and similarity search"""
 

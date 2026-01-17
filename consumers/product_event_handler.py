@@ -99,7 +99,13 @@ class DataValidator:
     @staticmethod
     def validate_product_id(data: Dict) -> Optional[str]:
         """Extract and validate product ID"""
-        product_id = data.get("id") or data.get("product_id") or data.get("sku")
+        product_id = (
+            data.get("id") 
+            or data.get("product_id") 
+            or data.get("sku") 
+            or data.get("entityId") 
+            or data.get("entity_id")
+        )
         
         if not product_id:
             return None
@@ -196,11 +202,8 @@ class ProductEventHandler:
     
     def _handle_event(self, event: Dict[str, Any]) -> None:
         """Handle product event (with validation)"""
-        
-        if event.get("entityType") != "PRODUCT":
-            return
-        
-        event_type = event.get("eventType")
+        logger.debug(f"Processing product event: {event.get('eventType')}")
+        event_type = event.get("eventType") or event.get("event_type")
         data = event
         
         # Validate product ID
@@ -221,11 +224,14 @@ class ProductEventHandler:
         )
         
         try:
-            if event_type in ("CREATED", "UPDATED", "upsert"):
+            # Normalize event type
+            norm_type = str(event_type).upper()
+            
+            if norm_type in ("CREATED", "UPDATED", "UPSERT", "CREATE", "UPDATE"):
                 self._process_upsert(product_id, data)
                 self._stats['upserted'] += 1
             
-            elif event_type == "DELETED":
+            elif norm_type in ("DELETED", "DELETE"):
                 self._process_delete(product_id)
                 self._stats['deleted'] += 1
             
@@ -245,218 +251,92 @@ class ProductEventHandler:
     # ==================== BUSINESS LOGIC ====================
     
     def _process_upsert(self, product_id: str, data: Dict) -> None:
-        """Process upsert event (OPTIMIZED)"""
+        """Process upsert event (Dual Strategy)"""
         start_time = time.time()
         
-        # Generate embedding
-        embedding = self.embedding_model.get_product_embedding(data)
+        # 1. Recommendation Embedding (Namespace: "products")
+        # Used for "Similar Products" and content-based recommendation
+        payload = data.get("data", data)
+        if not payload.get("id"):
+            payload["id"] = product_id
+            
+        rec_embedding = self.embedding_model.get_product_recommendation_embedding(payload)
         
-        # Build metadata (improved schema)
-        metadata = self._build_metadata_v2(data)
+        # Build metadata (using new Builder)
+        from consumers.product_metadata_builder import ProductMetadataBuilder
+        raw_metadata = ProductMetadataBuilder.build(payload)
         
-        # Store in vector DB
+        # Flatten for Pinecone
+        rec_metadata = {
+            "product_id": str(raw_metadata["product"].get("product_id")),
+            "name": str(raw_metadata["product"].get("name", "")),
+            "brand": str(raw_metadata["product"].get("brand", "")),
+            "categories": raw_metadata["product"].get("categories", []),
+            "warranty": str(raw_metadata["product"].get("warranty", "")),
+            "created_at": str(raw_metadata["product"].get("created_at") or ""),
+            "updated_at": str(raw_metadata["product"].get("updated_at") or ""),
+            "min_price": float(raw_metadata["stats"].get("min_price", 0)),
+            "max_price": float(raw_metadata["stats"].get("max_price", 0)),
+            "vector_type": "recommendation",
+            # Serialized JSON for complex structs
+            "variants_json": json.dumps(raw_metadata["variants"]),
+            "stats_json": json.dumps(raw_metadata["stats"])
+        }
+        
+        # Store in vector DB (products namespace)
         success = self.vector_store.store_product_embedding(
             product_id=product_id,
-            embedding=embedding,
-            metadata=metadata,
+            embedding=rec_embedding,
+            metadata=rec_metadata,
+            namespace="products"
         )
         
         if not success:
             raise RuntimeError(f"Vector upsert failed for product {product_id}")
+            
+        # 2. RAG Chatbot Embeddings (Namespace: "rag_chunks")
+        # Used for Chatbot Q&A
+        chunks = self.embedding_model.embed_product_chunks(payload)
+        chunk_count = 0
+        
+        for embedding, chunk_info in chunks:
+            chunk_metadata = chunk_info["metadata"]
+            chunk_metadata["text"] = chunk_info["text"]
+            chunk_metadata["vector_type"] = "rag_chunk"
+            chunk_id = chunk_metadata["chunk_id"]
+            
+            # Store chunk (rag_chunks namespace)
+            self.vector_store.store_product_embedding(
+                product_id=chunk_id,
+                embedding=embedding,
+                metadata=chunk_metadata,
+                namespace="rag_chunks"
+            )
+            chunk_count += 1
         
         elapsed = time.time() - start_time
-        logger.info(f"Vector upsert OK | product={product_id} time={elapsed:.3f}s")
+        logger.info(f"Vector upsert OK | product={product_id} chunks={chunk_count} time={elapsed:.3f}s")
     
     def _process_delete(self, product_id: str) -> None:
         """Process delete event"""
-        success = self.vector_store.delete_product_embedding(product_id)
+        # 1. Delete main recommendation embedding
+        success = self.vector_store.delete_product_embedding(product_id, namespace="products")
         
         if not success:
-            raise RuntimeError(f"Vector delete failed for product {product_id}")
+            logger.warning(f"Vector delete failed or not found for product {product_id}")
+            # Continue to try deleting chunks anyway
         
-        logger.info(f"Vector deleted | product={product_id}")
-    
-    # ==================== METADATA BUILDING (V2) ====================
-    
-    def _build_metadata_v2(self, data: Dict) -> Dict[str, Any]:
-        """
-        Build metadata with improved schema
+        # 2. Delete RAG chunks (best effort)
+        chunk_types = [
+            "overview", "technical", "design", "camera", 
+            "battery_connectivity", "warranty"
+        ]
         
-        Key improvements:
-        1. All filterable fields are primitives (not JSON strings)
-        2. Proper validation and type conversion
-        3. Calculate derived fields (discount, stock status)
-        4. Rich data in JSON only when necessary
-        """
+        for c_type in chunk_types:
+            chunk_id = f"{product_id}_{c_type}"
+            self.vector_store.delete_product_embedding(chunk_id, namespace="rag_chunks")
         
-        # Extract and validate core fields
-        product_id = DataValidator.validate_product_id(data) or "unknown"
-        sku = str(data.get("sku", product_id))
-        name = str(data.get("name", ""))[:200]  # Limit length
-        brand = str(data.get("brandName") or data.get("brand") or "")[:100]
-        category = str(data.get("category", ""))[:100]
-        
-        # Commercial data (with validation)
-        price = DataValidator.safe_float(data.get("price"), 0.0)
-        list_price = DataValidator.safe_float(data.get("listPrice"), price)
-        
-        # Calculate discount
-        has_discount = list_price > price and price > 0
-        discount_percentage = (
-            ((list_price - price) / list_price * 100)
-            if has_discount
-            else 0.0
-        )
-        
-        # Stock status (try to infer from data)
-        in_stock = data.get("inStock", True)
-        if isinstance(in_stock, str):
-            in_stock = in_stock.lower() not in ['false', '0', 'out of stock']
-        
-        # Quality metrics
-        avg_rating = DataValidator.safe_float(data.get("avgRating"), 0.0)
-        review_count = DataValidator.safe_int(data.get("reviewCount"), 0)
-        
-        # Media
-        has_video = bool(data.get("videoUrl"))
-        images = DataValidator.safe_list(data.get("images"))
-        image_count = len(images)
-        
-        # Taxonomy
-        category_ids = DataValidator.safe_list(data.get("categoryId"))
-        tags = self._extract_tags(data)
-        
-        # Process variants (optimized)
-        variants_data = DataValidator.safe_list(data.get("productVariants"))
-        variant_info = self._process_variants(variants_data)
-        
-        # Process attributes (optimized)
-        specs_data = DataValidator.safe_list(data.get("specifications"))
-        attributes = self._process_attributes(specs_data)
-        
-        # Create metadata object
-        metadata = ProductMetadata(
-            entity_type="product",
-            product_id=product_id,
-            sku=sku,
-            name=name,
-            brand=brand,
-            category=category,
-            
-            price=price,
-            list_price=list_price,
-            currency=data.get("currency", "VND"),
-            in_stock=in_stock,
-            has_discount=has_discount,
-            discount_percentage=round(discount_percentage, 2),
-            
-            avg_rating=avg_rating,
-            review_count=review_count,
-            
-            has_video=has_video,
-            image_count=image_count,
-            
-            category_ids=category_ids,
-            tags=tags,
-            
-            variant_count=variant_info['count'],
-            available_colors=variant_info['colors'],
-            available_sizes=variant_info['sizes'],
-            
-            attributes=json.dumps(attributes, ensure_ascii=False),
-            variants=json.dumps(variant_info['variants'], ensure_ascii=False),
-            
-            embedding_version="v2",
-            indexed_at=time.time(),
-        )
-        
-        return metadata.to_dict()
-    
-    def _process_variants(self, variants_data: List[Dict]) -> Dict:
-        """Process variants efficiently"""
-        colors = set()
-        sizes = set()
-        variants = []
-        
-        for v in variants_data:
-            if not isinstance(v, dict):
-                continue
-            
-            # Extract color
-            color = v.get("color", "").strip()
-            if color:
-                colors.add(color)
-            
-            # Extract size
-            size = v.get("size", "").strip()
-            if size:
-                sizes.add(size)
-            
-            # Store variant summary
-            variants.append({
-                "sku": v.get("sku", ""),
-                "name": v.get("variantName", ""),
-                "color": color,
-                "size": size,
-                "price": DataValidator.safe_float(v.get("price")),
-                "in_stock": v.get("inStock", True),
-            })
-        
-        return {
-            'count': len(variants),
-            'colors': sorted(list(colors)),
-            'sizes': sorted(list(sizes)),
-            'variants': variants,
-        }
-    
-    def _process_attributes(self, specs_data: List[Dict]) -> Dict:
-        """Process specifications into structured attributes"""
-        attributes = {}
-        
-        for spec in specs_data:
-            if not isinstance(spec, dict):
-                continue
-            
-            group = spec.get("group", "general").lower().strip()
-            key = spec.get("key", "").lower().strip().replace(" ", "_")
-            value = spec.get("value")
-            
-            if not key or value is None:
-                continue
-            
-            # Group by category
-            if group not in attributes:
-                attributes[group] = {}
-            
-            attributes[group][key] = value
-        
-        return attributes
-    
-    def _extract_tags(self, data: Dict) -> List[str]:
-        """Extract searchable tags"""
-        tags = set()
-        
-        # Category
-        category = data.get("category", "").strip()
-        if category:
-            tags.add(category.lower())
-        
-        # Category IDs
-        for cid in DataValidator.safe_list(data.get("categoryId")):
-            if cid:
-                tags.add(str(cid).lower())
-        
-        # Brand
-        brand = (data.get("brandName") or data.get("brand") or "").strip()
-        if brand:
-            tags.add(brand.lower())
-        
-        # Color (main product)
-        color = data.get("color", "").strip()
-        if color:
-            tags.add(color.lower())
-        
-        return sorted(list(tags))
+        logger.info(f"Vector deleted | product={product_id} (and associated chunks)")
     
     # ==================== LIFECYCLE ====================
     

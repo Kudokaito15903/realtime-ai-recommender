@@ -2,6 +2,8 @@ import random
 import string
 import requests
 from uuid import uuid4
+import time
+import random
 
 API_URL = "http://localhost:8000/products/"
 
@@ -9,115 +11,66 @@ API_URL = "http://localhost:8000/products/"
 # Base vocab for semantic search
 # -----------------------------
 CATEGORIES = {
-    "Electronics": {
-        "names": [
-            "Wireless Headphones",
-            "Bluetooth Earbuds",
-            "Noise Cancelling Headphones",
-            "Portable Speaker",
-        ],
-        "keywords": [
-            "wireless",
-            "bluetooth",
-            "noise cancelling",
-            "deep bass",
-            "high quality sound",
-            "long battery life",
-        ],
+    "Smartphone": {
+        "names": ["iPhone 15 Pro", "Samsung Galaxy S24", "Xiaomi 14", "Pixel 8"],
+        "keywords": ["5G", "OLED", "camera chất lượng cao", "pin lâu", "hiệu năng mạnh"],
         "specifications": lambda: [
-            {
-                "key": "brand",
-                "value": random.choice(["SoundMax", "AudioPro", "BeatX"]),
-                "type": "TEXT",
-                "group": "GENERAL",
-            },
-            {
-                "key": "battery_life",
-                "value": random.choice(["20h", "24h", "30h"]),
-                "type": "TEXT",
-                "group": "TECHNICAL",
-            },
-            {
-                "key": "connectivity",
-                "value": "Bluetooth",
-                "type": "TEXT",
-                "group": "TECHNICAL",
-            },
-        ],
+            {"key": "Phiên bản CPU", "value": random.choice(["A17 Pro", "Snapdragon 8 Gen 3"]), "group": "Performance"},
+            {"key": "Dung lượng", "value": random.choice(["8GB", "12GB"]), "group": "RAM"},
+            {"key": "Dung lượng", "value": random.choice(["256GB", "512GB"]), "group": "Storage"},
+            {"key": "Kích thước", "value": "6.1 inch", "group": "Display"},
+            {"key": "Công nghệ", "value": "OLED", "group": "Display"},
+            {"key": "Độ phân giải", "value": "48MP", "group": "Camera"},
+            {"key": "Dung lượng pin", "value": "4500mAh", "group": "Battery"},
+            {"key": "Tên OS", "value": random.choice(["iOS", "Android"]), "group": "OperatingSystem"},
+        ]
     },
-    "Gaming Accessories": {
-        "names": ["Gaming Mouse", "Mechanical Keyboard", "Gaming Headset"],
-        "keywords": [
-            "gaming",
-            "rgb lighting",
-            "high precision",
-            "ergonomic design",
-            "fast response",
-        ],
+
+    "Laptop": {
+        "names": ["MacBook Air M2", "Dell XPS 15", "ThinkPad X1"],
+        "keywords": ["mỏng nhẹ", "pin lâu", "hiệu năng cao", "SSD nhanh"],
         "specifications": lambda: [
-            {
-                "key": "brand",
-                "value": random.choice(["ProGamer", "HyperPlay"]),
-                "type": "TEXT",
-                "group": "GENERAL",
-            },
-            {"key": "rgb", "value": "Yes", "type": "TEXT", "group": "TECHNICAL"},
-            {
-                "key": "dpi",
-                "value": str(random.choice([8000, 12000, 16000])),
-                "type": "NUMBER",
-                "group": "TECHNICAL",
-            },
-        ],
+            {"key": "Phiên bản CPU", "value": random.choice(["Intel i7", "Apple M2"]), "group": "Performance"},
+            {"key": "Dung lượng", "value": random.choice(["16GB", "32GB"]), "group": "RAM"},
+            {"key": "Dung lượng", "value": "1TB SSD", "group": "Storage"},
+            {"key": "Kích thước", "value": "15.6 inch", "group": "Display"},
+            {"key": "Công nghệ", "value": "IPS", "group": "Display"},
+            {"key": "Chip đồ họa", "value": "Intel Iris Xe", "group": "Graphic"},
+            {"key": "Tên OS", "value": "Windows 11", "group": "OperatingSystem"},
+        ]
     },
-    "Wearables": {
-        "names": ["Smart Watch", "Fitness Tracker"],
-        "keywords": [
-            "heart rate monitoring",
-            "sleep tracking",
-            "fitness",
-            "gps",
-            "waterproof",
-        ],
+
+    "Tablet": {
+        "names": ["iPad Pro", "Galaxy Tab S9"],
+        "keywords": ["giải trí", "học tập", "màn hình lớn"],
         "specifications": lambda: [
-            {
-                "key": "brand",
-                "value": random.choice(["FitLife", "HealthPlus"]),
-                "type": "TEXT",
-                "group": "GENERAL",
-            },
-            {
-                "key": "gps",
-                "value": str(random.choice([True, False])),
-                "type": "TEXT",
-                "group": "TECHNICAL",
-            },
-            {"key": "waterproof", "value": "Yes", "type": "TEXT", "group": "TECHNICAL"},
-        ],
+            {"key": "Phiên bản CPU", "value": "Apple M2", "group": "Performance"},
+            {"key": "Dung lượng", "value": "8GB", "group": "RAM"},
+            {"key": "Dung lượng", "value": "256GB", "group": "Storage"},
+            {"key": "Kích thước", "value": "11 inch", "group": "Display"},
+            {"key": "Độ phân giải", "value": "12MP", "group": "Camera"},
+            {"key": "Dung lượng pin", "value": "7500mAh", "group": "Battery"},
+        ]
     },
-    "Sportswear": {
-        "names": ["Running Shoes", "Training Shoes"],
-        "keywords": ["lightweight", "breathable mesh", "comfortable", "durable sole"],
+
+    "Accessories": {
+        "names": ["Tai nghe Bluetooth", "Loa di động"],
+        "keywords": ["bluetooth", "không dây", "âm thanh tốt"],
         "specifications": lambda: [
-            {
-                "key": "brand",
-                "value": random.choice(["RunFast", "ActiveWear"]),
-                "type": "TEXT",
-                "group": "GENERAL",
-            },
-            {"key": "material", "value": "Mesh", "type": "TEXT", "group": "MATERIAL"},
-            {
-                "key": "gender",
-                "value": random.choice(["Men", "Women"]),
-                "type": "TEXT",
-                "group": "GENERAL",
-            },
-        ],
+            {"key": "Thời lượng pin", "value": "30h", "group": "Battery"},
+            {"key": "Chuẩn kết nối", "value": "Bluetooth 5.3", "group": "Connectivity"},
+        ]
     },
 }
 
 
 def random_price(category):
+    if category == "Laptops":
+        return round(random.uniform(800, 2500), 2)
+    if category == "Smartphones":
+        return round(random.uniform(500, 1500), 2)
+    if category == "Desktop Computers":
+        return round(random.uniform(1000, 4000), 2)
     if category == "Electronics":
         return round(random.uniform(80, 300), 2)
     if category == "Gaming Accessories":
@@ -128,13 +81,11 @@ def random_price(category):
 
 
 def generate_description(name, keywords):
-    category = random.choice(list(CATEGORIES.keys()))
-
-    selected = random.sample(keywords, k=3)
+    selected = random.sample(keywords, k=min(3, len(keywords)))
     return (
-        f"{name} designed for modern users. "
-        f"Features {', '.join(selected)}. "
-        f"Perfect for everyday use and long-term comfort."
+        f"{name} là sản phẩm điện tử hiện đại. "
+        f"Tính năng nổi bật: {', '.join(selected)}. "
+        f"Phù hợp cho học tập, làm việc và giải trí."
     )
 
 
@@ -144,51 +95,80 @@ def generate_product():
 
     name = random.choice(config["names"])
     description = generate_description(name, config["keywords"])
-
     specs = config["specifications"]()
-    brand = next((s["value"] for s in specs if s["key"] == "brand"), "Generic")
+
+    brand = random.choice(["Apple", "Samsung", "Xiaomi", "Dell", "Lenovo"])
+
+    price = random_price(category)
 
     return {
         "name": name,
+        "brand": brand,
         "description": description,
-        "category": category,
-        "categoryId": [category],
-        "price": random_price(category),
-        "brandName": brand,
-        "sku": "SKU-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8)),
+        "listPrice": price,
+        "currency": "VND",
+        "inStock": True,
+        "warranty": "12 tháng",
+        "categories": [
+            {"id": category.lower(), "name": category}
+        ],
+        "images": [
+            "https://via.placeholder.com/300x300?text=Product"
+        ],
+        "videoUrl": "",
         "specifications": specs,
         "productVariants": [
             {
-                "sku": "SKU-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8)),
+                "sku": "SKU-" + uuid4().hex[:8].upper(),
                 "variantName": f"{name} - Standard",
-                "color": random.choice(["Red", "Black", "White"]),
-                "price": random_price(category),
+                "color": random.choice(["Black", "White", "Silver"]),
+                "price": price,
+                "inStock": True,
                 "bestSpecifications": []
             }
-        ],
-        "videoUrl": "",
-        "avgRating": 0,
-        "listPrice": None,
-        "sold": 0,
-        "thumbnail": "",
-        "imageList": []
+        ]
     }
 
 
-def post_product(product):
-    response = requests.post(API_URL, json=product)
-    if response.status_code not in (200, 201):
-        print("❌ Failed:", response.status_code, response.text)
-    else:
-        print("✅ Created:", response.json().get("product_id"))
+def post_product(product, delay_range=(0.3, 1.2)):
+    start_time = time.time()
+
+    try:
+        response = requests.post(API_URL, json=product, timeout=5)
+        elapsed = time.time() - start_time
+
+        if response.status_code not in (200, 201):
+            print(
+                f"[FAILED] {response.status_code} | "
+                f"time={elapsed:.2f}s | {response.text}"
+            )
+        else:
+            print(
+                f"[OK] product_id={response.json().get('product_id')} | "
+                f"time={elapsed:.2f}s"
+            )
+
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+
+    # 🔥 Delay để consumer xử lý kịp
+    sleep_time = random.uniform(*delay_range)
+    time.sleep(sleep_time)
 
 
 def main(total=50):
-    print(f"🚀 Generating {total} products...\n")
-    for _ in range(total):
+    print(f"Generating {total} products with throttling...\n")
+
+    for i in range(total):
+        print(f"Sending product {i + 1}/{total}")
         product = generate_product()
         post_product(product)
 
 
+
 if __name__ == "__main__":
-    main(total=100)
+    try:
+        # Generate 100 items as requested (mostly new categories now included)
+        main(total=100)
+    except KeyboardInterrupt:
+        print("\nStopped.")

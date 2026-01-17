@@ -10,7 +10,7 @@ torch
 psycopg2-binary
 pymongo
 kafka-python
-
+beautifulsoup4
 # Machine Learning và embedding dependencies
 numpy
 scipy

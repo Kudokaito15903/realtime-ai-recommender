@@ -72,6 +72,7 @@ class PineconeVectorStore(VectorStoreInterface):
         product_id: str,
         embedding: np.ndarray,
         metadata: Optional[Dict[str, Any]] = None,
+        namespace: str = "products",
     ) -> bool:
         """Store a product embedding in Pinecone"""
         try:
@@ -86,9 +87,9 @@ class PineconeVectorStore(VectorStoreInterface):
             vector_data["metadata"]["updated_at"] = time.time()
 
             # Upsert to Pinecone (insert or update)
-            self.index.upsert(vectors=[vector_data])
+            self.index.upsert(vectors=[vector_data], namespace=namespace)
 
-            logger.debug(f"Stored embedding for product {product_id} in Pinecone")
+            logger.debug(f"Stored embedding for product {product_id} in Pinecone (ns={namespace})")
             return True
 
         except Exception as e:
@@ -100,6 +101,7 @@ class PineconeVectorStore(VectorStoreInterface):
         content_id: str,
         embedding: np.ndarray,
         metadata: Optional[Dict[str, Any]] = None,
+        namespace: str = "content"
     ) -> bool:
         """Store a content embedding in Pinecone"""
         try:
@@ -114,9 +116,9 @@ class PineconeVectorStore(VectorStoreInterface):
             vector_data["metadata"]["updated_at"] = time.time()
 
             # Upsert to Pinecone (insert or update)
-            self.index.upsert(vectors=[vector_data])
+            self.index.upsert(vectors=[vector_data], namespace=namespace)
 
-            logger.debug(f"Stored embedding for content {content_id} in Pinecone")
+            logger.debug(f"Stored embedding for content {content_id} in Pinecone (ns={namespace})")
             return True
 
         except Exception as e:
@@ -124,7 +126,11 @@ class PineconeVectorStore(VectorStoreInterface):
             return False
 
     def find_similar_products(
-        self, embedding: np.ndarray, limit: int = 10, min_score: float = 0.75
+        self, 
+        embedding: np.ndarray, 
+        limit: int = 10, 
+        min_score: float = 0.75,
+        namespace: str = "products",
     ) -> List[Dict[str, Any]]:
         """Find similar products using Pinecone similarity search"""
         try:
@@ -134,6 +140,7 @@ class PineconeVectorStore(VectorStoreInterface):
                 top_k=limit,
                 include_metadata=True,
                 include_values=False,
+                namespace=namespace,
             )
 
             # Process results
@@ -155,18 +162,18 @@ class PineconeVectorStore(VectorStoreInterface):
                         }
                     )
 
-            logger.debug(f"Found {len(similar_products)} similar products in Pinecone")
+            logger.debug(f"Found {len(similar_products)} similar products in Pinecone (ns={namespace})")
             return similar_products
 
         except Exception as e:
             logger.error(f"Error searching for similar products: {e}")
             return []
 
-    def get_product_embedding(self, product_id: str) -> Optional[np.ndarray]:
+    def get_product_embedding(self, product_id: str, namespace: str = "products") -> Optional[np.ndarray]:
         """Retrieve a product embedding from Pinecone"""
         try:
             # Fetch vector by ID (updated API for pinecone v7+)
-            fetch_result = self.index.fetch(ids=[product_id])
+            fetch_result = self.index.fetch(ids=[product_id], namespace=namespace)
 
             # Check if we have vectors in the response
             if hasattr(fetch_result, "vectors") and fetch_result.vectors:
@@ -190,11 +197,11 @@ class PineconeVectorStore(VectorStoreInterface):
             logger.error(f"Error retrieving embedding for product {product_id}: {e}")
             return None
 
-    def delete_product_embedding(self, product_id: str) -> bool:
+    def delete_product_embedding(self, product_id: str, namespace: str = "products") -> bool:
         """Delete a product embedding from Pinecone"""
         try:
-            self.index.delete(ids=[product_id])
-            logger.debug(f"Deleted embedding for product {product_id} from Pinecone")
+            self.index.delete(ids=[product_id], namespace=namespace)
+            logger.debug(f"Deleted embedding for product {product_id} from Pinecone (ns={namespace})")
             return True
 
         except Exception as e:

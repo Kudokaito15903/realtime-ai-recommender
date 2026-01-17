@@ -3,20 +3,138 @@ Performance Optimization cho Chatbot Service
 Target: Giảm từ 15s → <5s
 """
 
+import sys
+import os
 import asyncio
 import concurrent.futures
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, NamedTuple
 import time
+import re
+import json
+import functools
+from dataclasses import dataclass
 from loguru import logger
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
+    logger.warning("google-generativeai package not found. Chatbot LLM features will be disabled.")
 
+# Adapters & Config
+import config
+from adapters.factory import get_vector_store, get_product_store, get_user_behavior
+from domain.embeddings.product_embeddings import get_embedding_model
 
-# ==================== OPTIMIZATION 1: PARALLEL EXECUTION ====================
+# ==================== UTIL CLASSES ====================
 
-class OptimizedChatbotService(ChatbotService):
+@dataclass
+class Intent:
+    primary: str
+    entities: List[str]
+    confidence: float
+    meta: Dict[str, Any]
+
+@dataclass
+class ConversationTurn:
+    query: str
+    answer: str
+    contexts: List[Dict[str, Any]]
+    intent: Intent
+    timestamp: float
+
+    def to_dict(self):
+        return {
+            "query": self.query,
+            "answer": self.answer,
+            "contexts": self.contexts,
+            "intent": {
+                "primary": self.intent.primary,
+                "confidence": self.intent.confidence
+            },
+            "timestamp": self.timestamp
+        }
+
+class SecurityUtils:
+    @staticmethod
+    def sanitize_query(query: str) -> str:
+        if not query:
+            return ""
+        # Remove dangerous chars but keep vietnamese
+        return query.strip()[:500]
+    
+    @staticmethod
+    def sanitize_session_id(session_id: str) -> str:
+        if not session_id:
+            return "default"
+        return re.sub(r'[^a-zA-Z0-9_-]', '', session_id)[:50]
+
+def timed_operation(name):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            try:
+                result = func(*args, **kwargs)
+                elapsed = time.time() - start
+                logger.debug(f"Operation {name} took {elapsed:.3f}s")
+                return result
+            except Exception as e:
+                elapsed = time.time() - start
+                logger.error(f"Operation {name} failed after {elapsed:.3f}s: {e}")
+                raise
+        return wrapper
+    return decorator
+
+# ==================== MAIN SERVICE ====================
+
+class ChatbotService:
     """Chatbot với parallel execution và aggressive caching"""
     
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, enable_cache: bool = True, redis_host: str = None, redis_port: int = 6379):
+        logger.info(f"Initializing ChatbotService (cache={enable_cache})")
+        
+        # Dependencies
+        self.vector_store = get_vector_store()
+        self.product_store = get_product_store()
+        self.user_behavior = get_user_behavior()
+        self.embedding_model = get_embedding_model()
+        
+        # Config
+        self.enable_cache = enable_cache
+        self.cache = None
+        
+        if self.enable_cache:
+            try:
+                import redis
+                host = redis_host or os.getenv("REDIS_HOST", "localhost")
+                port = redis_port or int(os.getenv("REDIS_PORT", 6379))
+                self.cache = redis.Redis(host=host, port=port, decode_responses=False) # Use pickle? Or handle strings
+                # For simplicity assuming the optimize logic implies custom caching handling or simple string
+                # Looking at usage: self.cache.get(pid, prefix='product') -> implies wrapper or custom get
+                # I'll implement a simple Redis wrapper if needed or just use standard Redis
+                # But OptimizedChatbotService user .get(..., prefix=..) which is NOT standard Redis.
+                # I will define a SimpleCache wrapper below.
+                
+                # Re-connecting to standard redis for now
+                self.redis_client = redis.Redis(host=host, port=port, decode_responses=True)
+                self.cache = SimpleCache(self.redis_client)
+                logger.info("Chatbot Redis cache enabled")
+            except Exception as e:
+                logger.warning(f"Failed to connect to Redis: {e}")
+                self.enable_cache = False
+
+        # Init GenAI
+        api_key = os.getenv("GOOGLE_API_KEY", getattr(config, "GOOGLE_API_KEY", None))
+        if not api_key:
+            logger.warning("GOOGLE_API_KEY not found")
+        elif not genai:
+            logger.warning("google.generativeai module not loaded")
+        else:
+            try:
+                genai.configure(api_key=api_key)
+                self.model = genai.GenerativeModel(getattr(config, "GOOGLE_MODEL", "gemini-pro"))
+            except Exception as e:
+                logger.error(f"Failed to configure GenAI: {e}")
         
         # Thread pool for parallel operations
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -29,6 +147,66 @@ class OptimizedChatbotService(ChatbotService):
             'conversation_ttl': 1800,  # 30 phút
             'intent_ttl': 1800,        # 30 phút (tăng từ 10 phút)
         }
+        
+        self.stats = {
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'errors': 0
+        }
+
+    # ==================== HELPERS ====================
+    
+    def _increment_stat(self, key):
+        self.stats[key] = self.stats.get(key, 0) + 1
+        
+    def _get_cache_key(self, prefix, *args):
+        return f"{prefix}:{':'.join(str(a) for a in args)}"
+
+    def get_embedding_cached(self, text: str) -> List[float]:
+        # Implement caching for embeddings if needed
+        return self.embedding_model.embed_text(text).tolist()
+
+    def _fetch_product_from_db(self, product_id: str) -> Dict:
+        return self.product_store.get_product_by_id(product_id)
+
+    def _extract_product_info(self, data: Dict, meta: Dict) -> Dict:
+        return {
+            "name": data.get("name") or meta.get("name"),
+            "price": data.get("price") or meta.get("price"),
+            "brand": data.get("brand") or meta.get("brand"),
+            "rating": data.get("avgRating") or meta.get("avg_rating")
+        }
+
+    def _call_genai(self, prompt: str, max_tokens: int = 1024, temperature: float = 0.1) -> str:
+        if not hasattr(self, 'model') or not self.model:
+            return "Chức năng AI chưa được cấu hình (Missing Key or Package)."
+            
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=temperature
+                )
+            )
+            return response.text
+        except Exception as e:
+            logger.error(f"GenAI call failed: {e}")
+            return "Xin lỗi, tôi đang gặp sự cố kết nối."
+
+    def _get_canned_response(self, query: str, intent: Intent) -> str:
+        if intent.primary == 'greeting':
+            return "Xin chào! Tôi có thể giúp gì cho bạn hôm nay?"
+        return "Tôi chưa hiểu ý bạn, vui lòng nói rõ hơn."
+
+    def get_conversation_history(self, session_id: str) -> List[Dict]:
+        # Placeholder for history retrieval
+        return []
+
+    def save_conversation_turn(self, session_id: str, turn: ConversationTurn):
+        # Placeholder for saving history
+        # self.user_behavior.log_chat(...)
+        pass
     
     # ==================== OPT 1: SKIP INTENT DETECTION ====================
     
@@ -58,6 +236,23 @@ class OptimizedChatbotService(ChatbotService):
     
     # ==================== OPT 2: DISABLE RE-RANKING ====================
     
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        use_cache: bool = True
+    ) -> List[Dict[str, Any]]:
+        # Actual retrieval logic
+        embedding = self.embedding_model.get_embedding(query)
+        # Vector store search (rag_chunks namespace for chatbot)
+        results = self.vector_store.find_similar_products(
+            embedding=embedding, 
+            limit=top_k,
+            namespace="rag_chunks"
+        )
+        # Format results
+        return results
+
     def retrieve_fast(
         self,
         query: str,
@@ -192,7 +387,7 @@ class OptimizedChatbotService(ChatbotService):
     # ==================== OPT 5: FAST ANSWER PIPELINE ====================
     
     @timed_operation("answer_fast")
-    def answer_fast(
+    def answer(
         self,
         query: str,
         session_id: str = "default",
@@ -287,6 +482,8 @@ class OptimizedChatbotService(ChatbotService):
             intent = self._detect_intent_fast(query)
             return self._get_canned_response(query, intent), [], intent
     
+    answer_fast = answer # Alias
+
     # ==================== OPT 6: CACHED LLM RESPONSES ====================
     
     def _call_genai_cached(
@@ -344,78 +541,30 @@ class OptimizedChatbotService(ChatbotService):
         self.executor.shutdown(wait=False)
         logger.info("Executor shutdown")
 
+    def get_stats(self):
+        return self.stats
 
-# ==================== OPTIMIZATION 8: STREAMING RESPONSE ====================
-
-class StreamingChatbotService(OptimizedChatbotService):
-    """Support streaming responses for better UX"""
-    
-    def answer_streaming(
-        self,
-        query: str,
-        session_id: str = "default",
-        top_k: int = 3
-    ):
-        """
-        Generator that yields answer chunks as they're generated
-        Usage:
-            for chunk in chatbot.answer_streaming(query):
-                print(chunk, end='', flush=True)
-        """
+class SimpleCache:
+    def __init__(self, redis_client):
+        self.client = redis_client
         
-        start_time = time.time()
+    def get(self, key, prefix=''):
+        full_key = f"{prefix}:{key}" if prefix else key
+        val = self.client.get(full_key)
+        if val:
+            try:
+                return json.loads(val)
+            except:
+                return val
+        return None
         
-        # Fast intent + retrieval
-        query_safe = SecurityUtils.sanitize_query(query)
-        intent = self._detect_intent_fast(query_safe)
-        
-        if intent.primary == 'greeting':
-            yield self._get_canned_response(query_safe, intent)
-            return
-        
-        contexts = self.retrieve_fast(query_safe, top_k=top_k)
-        
-        if not contexts:
-            yield "Xin lỗi, tôi không tìm thấy thông tin phù hợp."
-            return
-        
-        # Build prompt
-        prompt = self._build_fast_prompt(query_safe, contexts, intent)
-        
-        # ✅ Stream from LLM (if API supports streaming)
-        # Note: Google GenAI SDK supports streaming with generate_content_stream()
-        try:
-            response = self.google_client.client.models.generate_content_stream(
-                model=config.GOOGLE_MODEL,
-                contents=prompt,
-                config={
-                    'max_output_tokens': 1024,
-                    'temperature': 0.1
-                }
-            )
-            
-            full_answer = ""
-            for chunk in response:
-                if chunk.text:
-                    full_answer += chunk.text
-                    yield chunk.text
-            
-            # Save after complete
-            turn = ConversationTurn(
-                query_safe,
-                full_answer,
-                contexts,
-                intent,
-                time.time()
-            )
-            self.save_conversation_turn(session_id, turn)
-            
-            logger.info(f"✅ Streaming completed in {time.time() - start_time:.3f}s")
-        
-        except Exception as e:
-            logger.error(f"Streaming failed: {e}")
-            yield self._get_canned_response(query_safe, intent)
-
+    def set(self, key, value, prefix='', ttl=300):
+        full_key = f"{prefix}:{key}" if prefix else key
+        if isinstance(value, (dict, list)):
+            val = json.dumps(value)
+        else:
+            val = str(value)
+        self.client.setex(full_key, ttl, val)
 
 # ==================== PERFORMANCE MONITORING ====================
 
@@ -477,47 +626,30 @@ class PerformanceMonitor:
         print("\n" + "="*60)
 
 
-# ==================== USAGE EXAMPLE ====================
-
 if __name__ == "__main__":
     # Initialize optimized chatbot
-    chatbot = OptimizedChatbotService(
-        redis_host="localhost",
-        redis_port=6379,
-        enable_cache=True
-    )
-    
-    # Pre-compute common embeddings
-    common_queries = [
-        "giày thể thao",
-        "áo khoác",
-        "túi xách",
-        "chính sách thanh toán",
-        "đổi trả hàng"
-    ]
-    chatbot.precompute_common_embeddings(common_queries)
-    
-    # Test fast answer
-    start = time.time()
-    answer, contexts, intent = chatbot.answer_fast(
-        "Bên mình bán xe đạp không?",
-        session_id="test"
-    )
-    elapsed = time.time() - start
-    
-    print(f"\n✅ Answer: {answer}")
-    print(f"⚡ Time: {elapsed:.3f}s")
-    print(f"📊 Cache hit rate: {chatbot.get_stats()['cache_hit_rate']}")
-    
-    # Test streaming
-    print("\n\n=== STREAMING TEST ===")
-    streaming_chatbot = StreamingChatbotService(
-        redis_host="localhost",
-        redis_port=6379,
-        enable_cache=True
-    )
-    
-    print("Answer: ", end='', flush=True)
-    for chunk in streaming_chatbot.answer_streaming("Có giày Nike không?"):
-        print(chunk, end='', flush=True)
-    print()
+    try:
+        chatbot = ChatbotService(
+            redis_host="localhost",
+            redis_port=6379,
+            enable_cache=True
+        )
+        
+        # Pre-compute common embeddings
+        common_queries = [
+            "giày thể thao",
+            "áo khoác",
+            "chính sách thanh toán",
+        ]
+        chatbot.precompute_common_embeddings(common_queries)
+        
+        # Test fast answer
+        print("\nTest Answer:")
+        answer, contexts, intent = chatbot.answer(
+            "Bên mình bán xe đạp không?",
+            session_id="test"
+        )
+        
+        print(f"\n✅ Answer: {answer}")
+    except Exception as e:
+        logger.error(f"Startup test failed: {e}")

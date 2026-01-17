@@ -22,6 +22,7 @@ from adapters.factory import (
     get_product_store,
     get_backend_info,
 )
+from adapters.interfaces import ProductStoreError
 from domain.embeddings.product_embeddings import get_embedding_model
 
 # Initialize router
@@ -207,20 +208,20 @@ async def create_product(product: ProductCreate):
     try:
         product_data = product.dict()
 
-            # Get the generated product ID from the store
+        # Get the generated product ID from the store
         product_id = product_store.store_product(product_data)
         if not product_id:
             raise HTTPException(
                 status_code=500,
-                detail="Failed to store product"
-        )
+                detail="Failed to store product (unknown error)"
+            )
 
         # Publish event - event consumer will handle product storage and embedding generation
         if event_processor:
             try:
                 event_data = {
                     "entity_id": product_id,
-                    "event_type": "create",
+                    "event_type": "CREATE",
                     "entity_type": "product",
                     "timestamp": time.time(),
                     "data": product_data,
@@ -246,6 +247,9 @@ async def create_product(product: ProductCreate):
 
     except HTTPException:
         raise
+    except ProductStoreError as e:
+        logger.error(f"Product store error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating product: {e}")
         raise HTTPException(
@@ -283,6 +287,9 @@ async def update_product(product_id: str, product: ProductCreate):
 
     except HTTPException:
         raise
+    except ProductStoreError as e:
+        logger.error(f"Product store error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Error updating product: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -311,6 +318,9 @@ async def delete_product(product_id: str):
 
     except HTTPException:
         raise
+    except ProductStoreError as e:
+        logger.error(f"Product store error during deletion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting product: {e}")
         raise HTTPException(status_code=500, detail=str(e))

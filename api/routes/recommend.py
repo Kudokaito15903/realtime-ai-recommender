@@ -61,6 +61,7 @@ async def get_product_recommendations(
             status_code=500, detail=f"Failed to get recommendations: {str(e)}"
         )
 
+
 @router.get("/trending", response_model=RecommendationResponse)
 async def get_trending_recommendations(
     limit: int = Query(10, description="Maximum number of recommendations to return"),

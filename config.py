@@ -17,7 +17,7 @@ VECTOR_STORE_TYPE = os.getenv(
     "VECTOR_STORE_TYPE", "pinecone"
 )  # redis, pinecone, qdrant, chroma
 
-EVENT_PROCESSOR_TYPE="kafka"
+EVENT_PROCESSOR_TYPE = "kafka"
 DATA_STORE_TYPE = os.getenv(
     "DATA_STORE_TYPE", "postgres"
 )  # redis, supabase, postgresql, sqlite
@@ -27,8 +27,12 @@ BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9094")
 KAFKA_PRODUCT_TOPIC = os.getenv("KAFKA_PRODUCT_TOPIC", "product-events")
 KAFKA_CONTENT_TOPIC = os.getenv("KAFKA_CONTENT_TOPIC", "content-events")
-KAFKA_PRODUCT_GROUP_ID = os.getenv("KAFKA_PRODUCT_GROUP_ID", "recommender-product-group-v3")
-KAFKA_CONTENT_GROUP_ID = os.getenv("KAFKA_CONTENT_GROUP_ID", "recommender-content-group")
+KAFKA_PRODUCT_GROUP_ID = os.getenv(
+    "KAFKA_PRODUCT_GROUP_ID", "recommender-product-group-v3"
+)
+KAFKA_CONTENT_GROUP_ID = os.getenv(
+    "KAFKA_CONTENT_GROUP_ID", "recommender-content-group"
+)
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recommender-group")
 
 # ================================
@@ -43,7 +47,9 @@ PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "product-recommendations"
 # Elasticsearch Configuration
 ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
 ELASTICSEARCH_API_KEY = os.getenv("ELASTICSEARCH_API_KEY")
-ELASTICSEARCH_INDEX_NAME = os.getenv("ELASTICSEARCH_INDEX_NAME", "product-recommendations")
+ELASTICSEARCH_INDEX_NAME = os.getenv(
+    "ELASTICSEARCH_INDEX_NAME", "product-recommendations"
+)
 
 # Supabase Configuration (optional, kept for backward compatibility)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -180,10 +186,13 @@ HYBRID_WEIGHT_ALS = float(os.getenv("HYBRID_WEIGHT_ALS", 1.0))
 HYBRID_WEIGHT_SESSION = float(os.getenv("HYBRID_WEIGHT_SESSION", 1.0))
 HYBRID_WEIGHT_VECTOR = float(os.getenv("HYBRID_WEIGHT_VECTOR", 1.0))
 
-#Chatbot 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", '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')
-OPENAI_MODEL= os.getenv("OPENAI_MODEL", 'google/gemma-3-27b-it:free')
-OPENAI_API_URL = os.getenv("OPENAI_API_URL", 'https://openrouter.ai/api/v1')
+# Chatbot
+OPENAI_API_KEY = os.getenv(
+    "OPENAI_API_KEY",
+    "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",
+)
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "google/gemma-3-27b-it:free")
+OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://openrouter.ai/api/v1")
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash-exp")
@@ -193,12 +202,15 @@ CONTENT_STORE_TYPE = os.getenv("CONTENT_STORE_TYPE", "supabase")
 
 # Brand & Fine-tuning
 BRAND_PERSONALITY = os.getenv(
-    "BRAND_PERSONALITY", 
+    "BRAND_PERSONALITY",
     "Bạn là một trợ lý ảo nhiệt tình, am hiểu công nghệ và luôn sẵn sàng giúp đỡ. "
     "Hãy sử dụng ngôn ngữ trẻ trung, năng động nhưng vẫn giữ sự chuyên nghiệp. "
-    "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'."
+    "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'.",
 )
-COLLECT_FINE_TUNING_DATA = os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
+COLLECT_FINE_TUNING_DATA = (
+    os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
+)
+
 
 class Config:
     """Configuration class for easy access to settings."""
@@ -215,10 +227,14 @@ class Config:
         )
         self.DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", DATA_STORE_TYPE)
         self.BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", BEHAVIOR_STORE_TYPE)
-        
+
         # Kafka configuration
-        self.KAFKA_PRODUCT_GROUP_ID = os.getenv("KAFKA_PRODUCT_GROUP_ID", KAFKA_PRODUCT_GROUP_ID)
-        self.KAFKA_CONTENT_GROUP_ID = os.getenv("KAFKA_CONTENT_GROUP_ID", KAFKA_CONTENT_GROUP_ID)
+        self.KAFKA_PRODUCT_GROUP_ID = os.getenv(
+            "KAFKA_PRODUCT_GROUP_ID", KAFKA_PRODUCT_GROUP_ID
+        )
+        self.KAFKA_CONTENT_GROUP_ID = os.getenv(
+            "KAFKA_CONTENT_GROUP_ID", KAFKA_CONTENT_GROUP_ID
+        )
 
         # Redis configuration
         self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -240,32 +256,32 @@ class Config:
         )
         self.MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 
-        #Chatbot
+        # Chatbot
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
-        self.OPENAI_API_URL = os.getenv(
-            "OPENAI_API_URL", "https://api.openai.com/v1"
-        )
+        self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
         # Logging
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
 
-		# Chatbot Configuration
+        # Chatbot Configuration
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
-        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL) 
+        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL)
         self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", OPENAI_API_URL)
-        
+
         self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", GOOGLE_API_KEY)
         self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", GOOGLE_MODEL)
 
         # Brand & Fine-tuning
         self.BRAND_PERSONALITY = os.getenv(
-            "BRAND_PERSONALITY", 
+            "BRAND_PERSONALITY",
             "Bạn là một trợ lý ảo nhiệt tình, am hiểu công nghệ và luôn sẵn sàng giúp đỡ. "
             "Hãy sử dụng ngôn ngữ trẻ trung, năng động nhưng vẫn giữ sự chuyên nghiệp. "
-            "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'."
+            "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'.",
         )
-        self.COLLECT_FINE_TUNING_DATA = os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
+        self.COLLECT_FINE_TUNING_DATA = (
+            os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
+        )
 
     def get_redis_url(self) -> str:
         """Get Redis connection URL."""

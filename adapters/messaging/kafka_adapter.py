@@ -73,8 +73,13 @@ class KafkaEventProcessor:
         event_type = event_data.get("event_type", "unknown")
         data = event_data.get("data", event_data)
 
-        entity_id = event_data.get("entity_id") or data.get("id") or event_data.get("product_id") or event_data.get("content_id")
-        
+        entity_id = (
+            event_data.get("entity_id")
+            or data.get("id")
+            or event_data.get("product_id")
+            or event_data.get("content_id")
+        )
+
         return self._publish_event(event_type, data, entity_id=entity_id)
 
     def _publish_event(
@@ -85,10 +90,9 @@ class KafkaEventProcessor:
                 logger.warning("Kafka producer not available")
                 return None
 
-
         event = {
             "eventType": event_type,
-            "entityId": entity_id, 
+            "entityId": entity_id,
             "data": data,
             "timestamp": time.time(),
         }

@@ -1,7 +1,8 @@
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, validator
 import uuid
+
 
 # ==================== CLOUD SERVICES INFO ====================
 class CloudServicesInfo(BaseModel):
@@ -29,18 +30,26 @@ class BackendInfoResponse(BaseModel):
 
 # ==================== PRODUCT MODELS ====================
 
+
 class Specification(BaseModel):
     """Model for product specification"""
+
     key: str
     value: str  # ✅ FIXED: Always string (e.g., "231 g", "12 GB")
     type: str = "TECH"
     group: str = "General"
+
+
 class Category(BaseModel):
     """Model for product category"""
+
     id: str
     name: str
+
+
 class ProductVariant(BaseModel):
     """Model for product variant"""
+
     id: Optional[str] = None  # ✅ ADDED: Variant ID (auto-generated if not provided)
     sku: Optional[str] = None  # ✅ Auto-generated if not provided
     variantName: str
@@ -48,8 +57,10 @@ class ProductVariant(BaseModel):
     price: float
     inStock: bool = True
 
+
 class ProductBase(BaseModel):
     """Base model for product data"""
+
     name: str
     brand: str
     description: str
@@ -63,23 +74,28 @@ class ProductBase(BaseModel):
     specifications: List[Specification] = []
     productVariants: List[ProductVariant] = []
 
-    @validator('listPrice')
+    @validator("listPrice")
     def validate_price(cls, v):
         if v < 0:
-            raise ValueError('listPrice must be non-negative')
+            raise ValueError("listPrice must be non-negative")
         return v
 
-    @validator('productVariants')
+    @validator("productVariants")
     def validate_variants(cls, v):
         if not v:
-            raise ValueError('At least one product variant is required')
+            raise ValueError("At least one product variant is required")
         return v
+
+
 class ProductCreate(ProductBase):
     """Model for creating a new product"""
+
     pass
+
 
 class ProductUpdate(BaseModel):
     """Model for updating an existing product (all fields optional)"""
+
     name: Optional[str] = None
     brand: Optional[str] = None
     description: Optional[str] = None
@@ -93,15 +109,16 @@ class ProductUpdate(BaseModel):
     specifications: Optional[List[Specification]] = None
     productVariants: Optional[List[ProductVariant]] = None
 
-    @validator('listPrice')
+    @validator("listPrice")
     def validate_price(cls, v):
         if v is not None and v < 0:
-            raise ValueError('listPrice must be non-negative')
+            raise ValueError("listPrice must be non-negative")
         return v
 
 
 class Product(BaseModel):
     """Model for product response (from database)"""
+
     id: str  # ✅ FIXED: MongoDB _id converted to string
     name: str
     brand: str
@@ -116,12 +133,15 @@ class Product(BaseModel):
     videoUrl: Optional[str] = ""
     specifications: List[Specification] = []
     productVariants: List[ProductVariant] = []
-    
+
     variants: List[str] = []  # Array of SKUs
     created_at: Optional[datetime] = Field(None, alias="create_at")
     updated_at: Optional[datetime] = Field(None, alias="update_at")
+
+
 class ProductListResponse(BaseModel):
     """Model for paginated product list response"""
+
     products: List[Product]
     total: int
     limit: int
@@ -131,12 +151,15 @@ class ProductListResponse(BaseModel):
 
 class ProductSearchResponse(BaseModel):
     """Model for product search results"""
+
     results: List[Product]
     query: str
     total: int
-    
+
+
 class SimilarProductResult(BaseModel):
     """Model for similar product search result"""
+
     product_id: str
     similarity_score: float
     sold: Optional[int] = None
@@ -147,21 +170,28 @@ class SimilarProductResult(BaseModel):
     thumbnail: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
+
 class RecommendedVariant(BaseModel):
     """Model for recommended variant"""
+
     sku: str
     variantName: str
     color: Optional[str] = None
     price: float
 
+
 class ProductRecommendation(BaseModel):
     """Model for product recommendation"""
+
     product_id: str
     score: float
     category: Optional[str] = None
     brandName: Optional[str] = None
-    recommendation_type: str  # "similar", "frequently_bought_together", "popular_in_category"
+    recommendation_type: (
+        str  # "similar", "frequently_bought_together", "popular_in_category"
+    )
     recommended_variant: Optional[RecommendedVariant] = None
+
 
 class ContentCreate(BaseModel):
     title: str
@@ -170,12 +200,14 @@ class ContentCreate(BaseModel):
     tags: Optional[List[str]] = []
     status: Optional[str] = "published"  # 'draft', 'published', 'archived'
 
+
 class ContentUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
     status: Optional[str] = None
+
 
 class ContentResponse(BaseModel):
     content_id: str = Field(alias="id")
@@ -184,9 +216,11 @@ class ContentResponse(BaseModel):
     category: Optional[str]
     status: str
 
+
 class ContentStatusResponse(BaseModel):
     content_id: str
     status: str
+
 
 class ContentListResponse(BaseModel):
     items: List[ContentResponse]
@@ -195,16 +229,82 @@ class ContentListResponse(BaseModel):
     page: int
     has_more: bool
 
+
 class ContentSearchResponse(BaseModel):
     query: str
     results: List[ContentResponse]
     count: int
 
+
 class RecommendationResponse(BaseModel):
     """Model for recommendation API response"""
+
     recommendations: List[ProductRecommendation]
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
+
 # Update forward references
 # ProductVariant.update_forward_refs() # Not strictly needed with Python 3.9+ typing if ordered correctly
+
+# Pydantic models for chat API
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+    timestamp: Optional[datetime] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    context: Optional[Dict[str, Any]] = None
+    user_id: Optional[str] = None
+
+
+class ProductCard(BaseModel):
+    product_id: str
+    name: str
+    price: float
+    image_url: Optional[str] = None
+    in_stock: bool = True
+    category: Optional[str] = None
+
+
+class QuickAction(BaseModel):
+    label: str
+    action: str
+    data: Optional[Dict[str, Any]] = None
+
+
+class Source(BaseModel):
+    """Source reference"""
+
+    chunk_id: str
+    chunk_type: str
+    relevance_score: float
+    text_preview: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    """Chat response to user"""
+
+    success: bool = True
+    conversation_id: str
+    intent: str
+    query: str
+    response: Dict[str, Any]
+    sources: Optional[List[Source]] = None
+    products: Optional[List[ProductCard]] = None
+    quick_actions: Optional[List[QuickAction]] = None
+    metadata: Dict[str, Any] = {}
+
+
+class ConversationHistory(BaseModel):
+    conversation_id: str
+    user_id: Optional[str] = None
+    messages: List[ChatMessage]
+    created_at: datetime
+    updated_at: datetime
+    metadata: Optional[Dict[str, Any]] = None

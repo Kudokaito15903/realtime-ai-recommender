@@ -151,46 +151,51 @@ class RecommendationService:
     ) -> List[Dict[str, Any]]:
         """
         Get popular items.
-        
+
         NEW implementation: uses Time-Decay logic (Trending) via Domain Recommender.
         Fetches recent interactions and calculates score on the fly.
         """
         # 1. Fetch recent interactions (e.g. last 10k)
         # We need a reasonable window to detect trends, but not too large for perf
         interactions = self.user_behavior.get_recent_interactions(limit=10000)
-        
+
         if not interactions:
             # Fallback to simple DB aggregation if no recent interactions found
             # (or for cold start)
             # logger.info("No recent interactions for popularity, falling back to simple DB aggregation.")
-            products = self.user_behavior.get_popular_products(category=category, limit=limit)
-             
+            products = self.user_behavior.get_popular_products(
+                category=category, limit=limit
+            )
+
             results = []
             for p in products:
                 pid = p.get("product_id") or p.get("id")
-                if not pid: continue
-                
-                results.append({
-                    "product_id": str(pid),
-                    "score": 1.0,
-                    "recommendation_type": "popular_all_time",
-                    "name": p.get("name_product", "")
-                })
+                if not pid:
+                    continue
+
+                results.append(
+                    {
+                        "product_id": str(pid),
+                        "score": 1.0,
+                        "recommendation_type": "popular_all_time",
+                        "name": p.get("name_product", ""),
+                    }
+                )
             return results
-            
+
         # 2. Helper to fetch product details for category filtering
         def product_loader(pid):
             return self.product_store.get_product(pid)
-            
+
         # 3. Calculate Scores
         ranked = get_popular_recommendations(
-            interactions, 
-            limit=limit, 
-            half_life_days=3.0, # 3-day half life = focus on weekly trends
+            interactions,
+            limit=limit,
+            half_life_days=3.0,  # 3-day half life = focus on weekly trends
             category_filter=category,
-            product_store_func=product_loader
+            product_store_func=product_loader,
         )
-        
+
         # 4. Format Result
         results = []
         for pid, score in ranked:
@@ -201,9 +206,9 @@ class RecommendationService:
                     "score": float(score),
                     "recommendation_type": "popular_trending",
                     "name": p.get("name_product", ""),
-                    "price": p.get("price", 0)
+                    "price": p.get("price", 0),
                 }
-                
+
                 # Enrich with variant info if available (Legacy support)
                 if p.get("productVariants"):
                     v = p["productVariants"][0]
@@ -213,23 +218,26 @@ class RecommendationService:
                         "color": v.get("color"),
                         "price": v.get("price"),
                     }
-                    
+
                 results.append(rec)
-                
-        # Fill remaining slots with DB popularity if needed? 
+
+        # Fill remaining slots with DB popularity if needed?
         if len(results) < limit:
             existing_ids = {r["product_id"] for r in results}
-            fallback = self.user_behavior.get_popular_products(category=category, limit=limit)
+            fallback = self.user_behavior.get_popular_products(
+                category=category, limit=limit
+            )
             for item in fallback:
                 if len(results) >= limit:
                     break
                 pid = str(item.get("product_id") or item.get("id"))
                 if pid not in existing_ids:
-                    item["score"] = 0.5 # Lower score for fallback
+                    item["score"] = 0.5  # Lower score for fallback
                     item["recommendation_type"] = "popular_all_time"
-                    if "product_id" not in item: item["product_id"] = pid
+                    if "product_id" not in item:
+                        item["product_id"] = pid
                     results.append(item)
-                    
+
         return results
 
     # ---------------------------------------------------------
@@ -758,7 +766,11 @@ class RecommendationService:
         Deduplicate and keep best score per product.
         Applies Config-based weighting per strategy.
         """
-        from config import HYBRID_WEIGHT_ALS, HYBRID_WEIGHT_SESSION, HYBRID_WEIGHT_VECTOR
+        from config import (
+            HYBRID_WEIGHT_ALS,
+            HYBRID_WEIGHT_SESSION,
+            HYBRID_WEIGHT_VECTOR,
+        )
 
         weights = {
             "als": HYBRID_WEIGHT_ALS,
@@ -766,8 +778,8 @@ class RecommendationService:
             "recency_weighted": HYBRID_WEIGHT_VECTOR,
             "similar": HYBRID_WEIGHT_VECTOR,
             "search": HYBRID_WEIGHT_VECTOR,
-            "popular_in_category": 1.0, # Baseline
-            "unknown": 1.0
+            "popular_in_category": 1.0,  # Baseline
+            "unknown": 1.0,
         }
 
         best: Dict[str, Dict[str, Any]] = {}
@@ -779,7 +791,7 @@ class RecommendationService:
 
             rtype = rec.get("recommendation_type", "unknown")
             weight = weights.get(rtype, 1.0)
-            
+
             raw_score = float(rec.get("score", rec.get("similarity_score", 0.0)))
             score = raw_score * weight
             prev = best.get(pid)
@@ -821,12 +833,22 @@ class RecommendationService:
             if self.product_store:
                 try:
                     product = self.product_store.get_product(product_id)
+                    logger.info(f"Product metadata for {product_id}: {product}")
                     if product:
                         enriched_candidate.update(
                             {
                                 "price": product.get("price", 0),
-                                "category": product.get("category") or product.get("catregory") or (product.get("categories")[0].get("name") if product.get("categories") else "") or "",
-                                "brandName": product.get("brandName") or product.get("brand") or "",
+                                "category": product.get("category")
+                                or product.get("catregory")
+                                or (
+                                    product.get("categories")[0].get("name")
+                                    if product.get("categories")
+                                    else ""
+                                )
+                                or "",
+                                "brandName": product.get("brandName")
+                                or product.get("brand")
+                                or "",
                                 "sold": product.get("sold", 0),
                                 "avgRating": product.get("avgRating", 0),
                                 "status": product.get("status", "active"),

@@ -212,8 +212,7 @@ async def create_product(product: ProductCreate):
         product_id = product_store.store_product(product_data)
         if not product_id:
             raise HTTPException(
-                status_code=500,
-                detail="Failed to store product (unknown error)"
+                status_code=500, detail="Failed to store product (unknown error)"
             )
 
         # Publish event - event consumer will handle product storage and embedding generation
@@ -227,17 +226,19 @@ async def create_product(product: ProductCreate):
                     "data": product_data,
                 }
                 event_id = event_processor.publish_event(event_data)
-                logger.info(f"Published create event {event_id} for product {product_id}")
+                logger.info(
+                    f"Published create event {event_id} for product {product_id}"
+                )
             except Exception as e:
                 logger.error(f"Failed to publish event for product {product_id}: {e}")
                 raise HTTPException(
                     status_code=500, detail=f"Failed to publish event: {str(e)}"
                 )
         else:
-            logger.warning("Event processor not available, product will not be processed")
-            raise HTTPException(
-                status_code=503, detail="Event processor not available"
+            logger.warning(
+                "Event processor not available, product will not be processed"
             )
+            raise HTTPException(status_code=503, detail="Event processor not available")
 
         return {
             "product_id": product_id,
@@ -309,7 +310,11 @@ async def delete_product(product_id: str):
         if event_processor:
             try:
                 event_processor.publish_event(
-                    {"product_id": product_id, "event_type": "delete", "timestamp": time.time()}
+                    {
+                        "product_id": product_id,
+                        "event_type": "delete",
+                        "timestamp": time.time(),
+                    }
                 )
             except Exception as e:
                 logger.error(f"Failed to publish delete event: {e}")

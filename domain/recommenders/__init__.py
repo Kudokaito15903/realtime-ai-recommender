@@ -30,4 +30,3 @@ __all__ = [
     "build_session_transitions",
     "recommend_next_items",
 ]
-

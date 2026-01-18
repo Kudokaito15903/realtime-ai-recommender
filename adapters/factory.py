@@ -22,14 +22,18 @@ def create_vector_store() -> VectorStoreInterface:
         return get_pinecone_vector_store()
 
     if store_type == "elasticsearch":
-        from adapters.vector_store.elasticsearch_adapter import get_elasticsearch_vector_store
+        from adapters.vector_store.elasticsearch_adapter import (
+            get_elasticsearch_vector_store,
+        )
 
         return get_elasticsearch_vector_store()
 
     raise ValueError(f"Unknown vector store type: {store_type}")
 
 
-def create_event_processor(topic: str = None, group_id: str = None, entity_type: str = "product") -> EventProcessorInterface:
+def create_event_processor(
+    topic: str = None, group_id: str = None, entity_type: str = "product"
+) -> EventProcessorInterface:
     processor_type = config.EVENT_PROCESSOR_TYPE.lower()
     logger.info(f"Creating event processor: {processor_type} (topic={topic})")
 
@@ -101,16 +105,21 @@ def create_user_behavior() -> UserBehaviorInterface:
 
 
 def create_content_store() -> ContentStoreInterface:
-    store_type = config.CONTENT_STORE_TYPE.lower()  
+    store_type = config.CONTENT_STORE_TYPE.lower()
     logger.info(f"Creating content store: {store_type}")
 
     if store_type == "supabase":
-        from adapters.database.supabase_content_adapter import get_supabase_content_store
+        from adapters.database.supabase_content_adapter import (
+            get_supabase_content_store,
+        )
 
         return get_supabase_content_store()
 
     if store_type in ("postgres", "postgresql"):
-        from adapters.database.postgres_content_adapter import get_postgres_content_store
+        from adapters.database.postgres_content_adapter import (
+            get_postgres_content_store,
+        )
+
         logger.info("Postgres content store created")
         return get_postgres_content_store()
 
@@ -133,6 +142,7 @@ def get_vector_store() -> VectorStoreInterface:
 
 _product_event_processor: EventProcessorInterface | None = None
 _content_event_processor: EventProcessorInterface | None = None
+
 
 def get_event_processor() -> EventProcessorInterface:
     """Legacy getter for backward compatibility, returns product processor"""

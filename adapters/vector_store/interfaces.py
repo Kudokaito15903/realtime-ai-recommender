@@ -20,7 +20,7 @@ class VectorStoreInterface(ABC):
     ) -> bool:
         """Store a product embedding with optional metadata"""
         pass
-    
+
     @abstractmethod
     def store_content_embedding(
         self,

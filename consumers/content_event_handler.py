@@ -41,16 +41,20 @@ class ContentEventHandler:
     def _handle_event(self, event: Dict[str, Any]) -> None:
 
         data = event.get("data")
-        if event.get("entity_type") != "content":
+        
+        # Handle both camelCase and snake_case
+        event_type = event.get("eventType") or event.get("event_type")
+        content_id = event.get("entityId") or event.get("entity_id") or data.get("id") or data.get("content_id")
+        timestamp = event.get("timestamp")
+
+        if not event_type or not content_id:
+            logger.error(f"Invalid content event schema: {event}")
             return
 
-        event_type = event.get("event_type")
-        content_id = data.get("id") or data.get("content_id")
-        timestamp = event.get("timestamp")
-        logger.info(f"Processing content event: {event_type} for content_id: {content_id}")
+        logger.info(
+            f"Processing content event: {event_type} for content_id: {content_id}"
+        )
         logger.debug(f"Content event data: {data}")
-        if not event_type or not content_id:
-                raise ValueError(f"Invalid content event schema: {event}")
 
         logger.debug(
             f"[{self.worker_name}] event={event_type} content={content_id} ts={timestamp}"

@@ -15,7 +15,11 @@ sys.path.append(
 
 import config
 import config
-from adapters.interfaces import ProductStoreInterface, UserBehaviorInterface, ProductStoreError
+from adapters.interfaces import (
+    ProductStoreInterface,
+    UserBehaviorInterface,
+    ProductStoreError,
+)
 
 
 # ==================== CONNECTION MANAGEMENT ====================
@@ -110,10 +114,10 @@ def _generate_sku(prefix: str = "SKU") -> str:
     """
     import random
     import string
-    
+
     # Generate 6 random alphanumeric characters (uppercase)
-    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    
+    random_part = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
     return f"{prefix}-{random_part}"
 
 
@@ -123,23 +127,26 @@ def _ensure_unique_sku(collection, sku: str, max_attempts: int = 10) -> str:
     """
     attempts = 0
     current_sku = sku
-    
+
     while attempts < max_attempts:
         # Check if SKU exists
         existing = collection.find_one({"sku": current_sku})
-        
+
         if not existing:
             return current_sku
-        
+
         # SKU exists, generate new one
         logger.debug(f"SKU collision detected: {current_sku}, regenerating...")
         current_sku = _generate_sku()
         attempts += 1
-    
+
     # Fallback: use timestamp-based SKU if all attempts fail
     import time
+
     timestamp_sku = f"SKU-{int(time.time() * 1000) % 1000000:06d}"
-    logger.warning(f"Max SKU generation attempts reached, using timestamp-based: {timestamp_sku}")
+    logger.warning(
+        f"Max SKU generation attempts reached, using timestamp-based: {timestamp_sku}"
+    )
     return timestamp_sku
 
 
@@ -206,15 +213,15 @@ class MongoDBProductStore(ProductStoreInterface):
         _ensure_index(self.products, "categoryId")
         _ensure_index(self.products, "name_product")
         _ensure_index(self.products, "brandName")
-        _ensure_index(self.products, [("name_product", "text"), ("description", "text")])
+        _ensure_index(
+            self.products, [("name_product", "text"), ("description", "text")]
+        )
 
         # Variants collection
         _ensure_index(self.variants, "_id", unique=True)
         _ensure_index(self.variants, "product_id")
         _ensure_index(self.variants, "sku", unique=True)
-        _ensure_index(
-            self.variants, [("product_id", ASCENDING), ("sku", ASCENDING)]
-        )
+        _ensure_index(self.variants, [("product_id", ASCENDING), ("sku", ASCENDING)])
 
     def store_product(self, product_data: Dict[str, Any]) -> Optional[str]:
         """Store or update a product in MongoDB (COMPLETE VERSION with all fields)"""
@@ -232,7 +239,7 @@ class MongoDBProductStore(ProductStoreInterface):
             # Extract and normalize categories
             categories = product_data.get("categories", [])
             category_ids = []
-            
+
             if categories:
                 for cat in categories:
                     if isinstance(cat, dict):
@@ -241,7 +248,7 @@ class MongoDBProductStore(ProductStoreInterface):
                             category_ids.append(str(cat_id))
                     elif cat:  # Simple string/id
                         category_ids.append(str(cat))
-            
+
             # Fallback to old categoryId field if exists
             if not category_ids:
                 old_category_id = product_data.get("categoryId", [])
@@ -253,7 +260,7 @@ class MongoDBProductStore(ProductStoreInterface):
             # Extract variants SKUs list
             variants_data = product_data.get("productVariants", [])
             variant_skus = []
-            
+
             # Pre-generate SKUs for variants that don't have them
             # This is needed for the variants array in product document
             if variants_data:
@@ -272,12 +279,14 @@ class MongoDBProductStore(ProductStoreInterface):
             if specifications:
                 for spec in specifications:
                     if isinstance(spec, dict):
-                        validated_specs.append({
-                            "key": spec.get("key", ""),
-                            "value": spec.get("value", ""),
-                            "type": spec.get("type", "TECH"),
-                            "group": spec.get("group", "General")
-                        })
+                        validated_specs.append(
+                            {
+                                "key": spec.get("key", ""),
+                                "value": spec.get("value", ""),
+                                "type": spec.get("type", "TECH"),
+                                "group": spec.get("group", "General"),
+                            }
+                        )
 
             # Extract images
             images = product_data.get("images", [])
@@ -289,36 +298,35 @@ class MongoDBProductStore(ProductStoreInterface):
             # Prepare complete product document
             product_doc = {
                 # Basic info
-                "name_product": product_data.get("name", product_data.get("name_product", "")),
+                "name_product": product_data.get(
+                    "name", product_data.get("name_product", "")
+                ),
                 "description": product_data.get("description", ""),
-                
                 # Brand - map both field names
-                "brandName": product_data.get("brand") or product_data.get("brandName", ""),
-                
+                "brandName": product_data.get("brand")
+                or product_data.get("brandName", ""),
                 # Pricing & Stock
                 "listPrice": _safe_float(product_data.get("listPrice"), 0.0),
                 "currency": product_data.get("currency", "VND"),
                 "inStock": product_data.get("inStock", True),
-                
                 # Additional info
                 "warranty": product_data.get("warranty", ""),
-                "video_url": product_data.get("videoUrl", product_data.get("video_url", "")),
-                
+                "video_url": product_data.get(
+                    "videoUrl", product_data.get("video_url", "")
+                ),
                 # Media
                 "images": images,
-                
                 # Categories - store both full objects and IDs
                 "categories": categories,  # Full category objects
                 "categoryId": category_ids,  # Just IDs for querying
-                
                 # Variants reference
                 "variants": variant_skus,
-                
                 # Specifications
                 "specifications": validated_specs,
-                
                 # Timestamps
                 "update_at": datetime.utcnow(),
+                # Store original ID for reference/lookup
+                "product_id": str(product_data.get("id", "")) or None
             }
 
             # Upsert product using _id
@@ -363,8 +371,10 @@ class MongoDBProductStore(ProductStoreInterface):
                     if not sku:
                         # Auto-generate SKU if not provided
                         sku = _generate_sku()
-                        logger.info(f"Auto-generated SKU: {sku} for variant: {v.get('variantName', 'N/A')}")
-                    
+                        logger.info(
+                            f"Auto-generated SKU: {sku} for variant: {v.get('variantName', 'N/A')}"
+                        )
+
                     # Ensure SKU is unique
                     sku = _ensure_unique_sku(self.variants, sku)
 
@@ -374,16 +384,14 @@ class MongoDBProductStore(ProductStoreInterface):
                         "variant_name": v.get("variantName", v.get("variant_name", "")),
                         "color": v.get("color", ""),
                         "sku": sku,  # Use generated or provided SKU
-                        
                         # Price - store as string to match schema
                         "price": str(_safe_float(v.get("price"), 0.0)),
-                        
                         # Stock status
                         "inStock": v.get("inStock", True),
-                        
                         # Best specifications
-                        "best_specifications": v.get("bestSpecifications", v.get("best_specifications", [])),
-                        
+                        "best_specifications": v.get(
+                            "bestSpecifications", v.get("best_specifications", [])
+                        ),
                         # Timestamps
                         "update_at": datetime.utcnow(),
                     }
@@ -436,12 +444,12 @@ class MongoDBProductStore(ProductStoreInterface):
             else:
                 # Fallback: try to find by product_id field if it exists
                 product_doc = self.products.find_one({"product_id": product_id})
-            
+
             if not product_doc:
                 return None
 
             product = dict(product_doc)
-            
+
             # Convert _id to string
             if "_id" in product:
                 product["id"] = str(product["_id"])
@@ -471,7 +479,7 @@ class MongoDBProductStore(ProductStoreInterface):
 
             for v_doc in variants_cursor:
                 v = dict(v_doc)
-                
+
                 # Convert _id to string
                 if "_id" in v:
                     v_id = str(v["_id"])
@@ -485,7 +493,11 @@ class MongoDBProductStore(ProductStoreInterface):
                     "sku": v.get("sku", ""),
                     "variantName": v.get("variant_name", ""),
                     "color": v.get("color", ""),
-                    "price": float(v.get("price", 0)) if isinstance(v.get("price"), (str, int, float)) else 0.0,
+                    "price": (
+                        float(v.get("price", 0))
+                        if isinstance(v.get("price"), (str, int, float))
+                        else 0.0
+                    ),
                     "inStock": v.get("inStock", True),
                     "bestSpecifications": v.get("best_specifications", []),
                 }
@@ -553,13 +565,13 @@ class MongoDBProductStore(ProductStoreInterface):
                 if "_id" in product:
                     product["id"] = str(product["_id"])
                     product.pop("_id", None)
-                
+
                 # Map field names for consistency
                 if "name_product" in product and "name" not in product:
                     product["name"] = product.get("name_product")
                 if "brandName" in product and "brand" not in product:
                     product["brand"] = product.get("brandName")
-                    
+
                 products.append(product)
 
             return products
@@ -595,13 +607,13 @@ class MongoDBProductStore(ProductStoreInterface):
                         product["id"] = str(product["_id"])
                         product.pop("_id", None)
                     product.pop("score", None)
-                    
+
                     # Map field names
                     if "name_product" in product and "name" not in product:
                         product["name"] = product.get("name_product")
                     if "brandName" in product and "brand" not in product:
                         product["brand"] = product.get("brandName")
-                        
+
                     products.append(product)
 
                 if products:
@@ -629,13 +641,13 @@ class MongoDBProductStore(ProductStoreInterface):
                 if "_id" in product:
                     product["id"] = str(product["_id"])
                     product.pop("_id", None)
-                    
+
                 # Map field names
                 if "name_product" in product and "name" not in product:
                     product["name"] = product.get("name_product")
                 if "brandName" in product and "brand" not in product:
                     product["brand"] = product.get("brandName")
-                    
+
                 products.append(product)
 
             return products
@@ -825,20 +837,19 @@ class MongoDBUserBehavior(UserBehaviorInterface):
             if not session_id:
                 return []
 
-            cursor = (
-                self.interactions.find({"session_id": str(session_id)})
-                .sort("timestamp", ASCENDING)
+            cursor = self.interactions.find({"session_id": str(session_id)}).sort(
+                "timestamp", ASCENDING
             )
 
             interactions = []
             for doc in cursor:
                 interaction = dict(doc)
                 interaction.pop("_id", None)
-                
+
                 # Convert timestamp to ISO format
                 if isinstance(interaction.get("timestamp"), datetime):
                     interaction["timestamp"] = interaction["timestamp"].isoformat()
-                    
+
                 interactions.append(interaction)
 
             return interactions
@@ -847,7 +858,9 @@ class MongoDBUserBehavior(UserBehaviorInterface):
             logger.error(f"Error getting session interactions for {session_id}: {e}")
             return []
         except Exception as e:
-            logger.error(f"Unexpected error getting session interactions for {session_id}: {e}")
+            logger.error(
+                f"Unexpected error getting session interactions for {session_id}: {e}"
+            )
             return []
 
     def get_popular_products(
@@ -905,7 +918,7 @@ class MongoDBUserBehavior(UserBehaviorInterface):
                     product.pop("_id", None)
                 else:
                     product["id"] = product_id
-                
+
                 # Ensure product_id key exists for service layer compatibility
                 product["product_id"] = product["id"]
                 product["view_count"] = view_count

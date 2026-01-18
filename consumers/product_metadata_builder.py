@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 from datetime import date
 import json
 
+
 class ProductMetadataBuilder:
 
     # =========================
@@ -27,28 +28,24 @@ class ProductMetadataBuilder:
         # Nested dictionaries are NOT supported directly in Pinecone metadata values in most cases unless serialized.
         # However, the user provided code returns nested dicts: "product", "variants", "stats".
         # If this is intended for Pinecone, we might need to flatten it OR serialize the nested parts.
-        # Given the error history ("Metadata value must be a string..."), I should probably serialize the complex parts 
-        # OR flatten them. 
+        # Given the error history ("Metadata value must be a string..."), I should probably serialize the complex parts
+        # OR flatten them.
         # CHECK: The user's code returns: {"product": {...}, "variants": [...], "stats": {...}}
         # If I return this directly to Pinecone, it will fail again with "Metadata value must be ...".
         # I will modify the build to return a FLATTENED version or JSON dump complex fields.
-        
-        # Let's inspect the user's intent. They might want this structure for the application logic, 
-        # but for Pinecone we need to adapt it. 
-        # I will implement it EXACTLY as requested first in the class, but when using it in the handler, 
+
+        # Let's inspect the user's intent. They might want this structure for the application logic,
+        # but for Pinecone we need to adapt it.
+        # I will implement it EXACTLY as requested first in the class, but when using it in the handler,
         # I will need to flatten it, OR I can modify the builder to produce Pinecone-compatible output.
-        
+
         # Actually, looking at the previous error: "Metadata value must be a string... got 'null'".
         # If I use this builder, I must ensure the output is compatible.
-        
-        # Let's implement the class as is, but maybe add a method `build_pinecone_metadata` 
+
+        # Let's implement the class as is, but maybe add a method `build_pinecone_metadata`
         # or handle compatibility in the handler.
-        
-        return {
-            "product": product_meta,
-            "variants": variants_meta,
-            "stats": stats_meta
-        }
+
+        return {"product": product_meta, "variants": variants_meta, "stats": stats_meta}
 
     # =========================
     # Product-level metadata
@@ -57,8 +54,7 @@ class ProductMetadataBuilder:
     @staticmethod
     def _build_product_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
         warranty_months = ProductMetadataBuilder._calculate_warranty_months(
-            payload.get("warrantyStartDate"),
-            payload.get("warrantyEndDate")
+            payload.get("warrantyStartDate"), payload.get("warrantyEndDate")
         )
 
         return {
@@ -66,9 +62,7 @@ class ProductMetadataBuilder:
             "name": payload.get("name"),
             "brand": payload.get("brand"),
             "categories": [
-                c.get("name")
-                for c in payload.get("categories", [])
-                if c.get("name")
+                c.get("name") for c in payload.get("categories", []) if c.get("name")
             ],
             "avg_rating": payload.get("avgRating", 0),
             "warranty_months": warranty_months,
@@ -81,18 +75,24 @@ class ProductMetadataBuilder:
     # =========================
 
     @staticmethod
-    def _build_variants_metadata(variants: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_variants_metadata(
+        variants: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
         results = []
 
         for v in variants:
-            results.append({
-                "variant_id": v.get("id"),
-                "sku": v.get("sku"),
-                "color": v.get("color"),
-                "storage": ProductMetadataBuilder._extract_storage(v.get("variantName")),
-                "price": v.get("price"),
-                "in_stock": bool(v.get("inStock", True))
-            })
+            results.append(
+                {
+                    "variant_id": v.get("id"),
+                    "sku": v.get("sku"),
+                    "color": v.get("color"),
+                    "storage": ProductMetadataBuilder._extract_storage(
+                        v.get("variantName")
+                    ),
+                    "price": v.get("price"),
+                    "in_stock": bool(v.get("inStock", True)),
+                }
+            )
 
         return results
 
@@ -111,10 +111,7 @@ class ProductMetadataBuilder:
         if not prices:
             return {}
 
-        return {
-            "min_price": min(prices),
-            "max_price": max(prices)
-        }
+        return {"min_price": min(prices), "max_price": max(prices)}
 
     # =========================
     # Helpers
@@ -143,7 +140,9 @@ class ProductMetadataBuilder:
         try:
             start_date = date.fromisoformat(start)
             end_date = date.fromisoformat(end)
-            return (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+            return (end_date.year - start_date.year) * 12 + (
+                end_date.month - start_date.month
+            )
         except Exception:
             return 0
 

@@ -10,6 +10,7 @@ import numpy as np
 
 class ProductStoreError(Exception):
     """Base exception for product store errors"""
+
     pass
 
 
@@ -209,11 +210,11 @@ class ContentStoreInterface(ABC):
 
     @abstractmethod
     def list_content(
-        self, 
-        category: Optional[str] = None, 
-        limit: int = 100, 
+        self,
+        category: Optional[str] = None,
+        limit: int = 100,
         offset: int = 0,
-        status: Optional[str] = None
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List content with optional filtering"""
         pass

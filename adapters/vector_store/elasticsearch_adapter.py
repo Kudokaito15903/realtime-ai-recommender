@@ -25,7 +25,7 @@ class ElasticsearchVectorStore(VectorStoreInterface):
         self.url = url
         self.index_name = index_name
         self.dimension = dimension
-        
+
         # Initialize Elasticsearch client
         if api_key:
             self.es = Elasticsearch(url, api_key=api_key)
@@ -51,15 +51,10 @@ class ElasticsearchVectorStore(VectorStoreInterface):
                                 "type": "dense_vector",
                                 "dims": self.dimension,
                                 "index": True,
-                                "similarity": "cosine"
+                                "similarity": "cosine",
                             },
-                            "metadata": {
-                                "type": "object",
-                                "dynamic": True
-                            },
-                            "updated_at": {
-                                "type": "date"
-                            }
+                            "metadata": {"type": "object", "dynamic": True},
+                            "updated_at": {"type": "date"},
                         }
                     }
                 }
@@ -85,7 +80,9 @@ class ElasticsearchVectorStore(VectorStoreInterface):
             doc = {
                 "embedding": embedding.tolist(),
                 "metadata": metadata or {},
-                "updated_at": int(time.time() * 1000)  # ES uses milliseconds for epoch_millis or just store as number
+                "updated_at": int(
+                    time.time() * 1000
+                ),  # ES uses milliseconds for epoch_millis or just store as number
             }
 
             # Index the document
@@ -109,9 +106,9 @@ class ElasticsearchVectorStore(VectorStoreInterface):
                     "field": "embedding",
                     "query_vector": embedding.tolist(),
                     "k": limit,
-                    "num_candidates": 100
+                    "num_candidates": 100,
                 },
-                "_source": ["metadata", "updated_at"]
+                "_source": ["metadata", "updated_at"],
             }
 
             response = self.es.search(index=self.index_name, body=query)
@@ -121,10 +118,10 @@ class ElasticsearchVectorStore(VectorStoreInterface):
             for hit in response["hits"]["hits"]:
                 similarity_score = hit["_score"]
 
-                # Note: ES cosine similarity is usually (1 + cosine) / 2 or similar depending on version, 
+                # Note: ES cosine similarity is usually (1 + cosine) / 2 or similar depending on version,
                 # but "similarity": "cosine" in mapping usually returns range [0, 1] if vectors are normalized?
                 # Actually in ES 8.x cosine similarity returns score in range [0, 1] for dense_vector.
-                
+
                 # Double check score normalization if needed, but assuming user provided threshold works for 0-1 range.
                 if similarity_score >= min_score:
                     similar_products.append(
@@ -136,7 +133,9 @@ class ElasticsearchVectorStore(VectorStoreInterface):
                         }
                     )
 
-            logger.debug(f"Found {len(similar_products)} similar products in Elasticsearch")
+            logger.debug(
+                f"Found {len(similar_products)} similar products in Elasticsearch"
+            )
             return similar_products
 
         except Exception as e:
@@ -151,7 +150,7 @@ class ElasticsearchVectorStore(VectorStoreInterface):
                 embedding_list = response["_source"].get("embedding")
                 if embedding_list:
                     return np.array(embedding_list, dtype=np.float32)
-            
+
             return None
 
         except NotFoundError:
@@ -164,7 +163,9 @@ class ElasticsearchVectorStore(VectorStoreInterface):
         """Delete a product embedding from Elasticsearch"""
         try:
             self.es.delete(index=self.index_name, id=product_id)
-            logger.debug(f"Deleted embedding for product {product_id} from Elasticsearch")
+            logger.debug(
+                f"Deleted embedding for product {product_id} from Elasticsearch"
+            )
             return True
 
         except NotFoundError:

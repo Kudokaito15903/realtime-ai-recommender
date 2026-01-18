@@ -10,6 +10,7 @@ from domain.recommenders.session_recommender import (
     recommend_next_items,
 )
 
+
 def run_manual_check():
     logger.info("Running Offline Manual Check (with valid time decay)...")
 
@@ -18,24 +19,70 @@ def run_manual_check():
     # Synthetic history with realistic timestamps
     interactions = [
         # Session A: Phone -> Case (recent)
-        {"user_id": "u1", "session_id": "s1", "product_id": "phone_123", "timestamp": now - 600},
-        {"user_id": "u1", "session_id": "s1", "product_id": "case_123",  "timestamp": now - 590},
-
+        {
+            "user_id": "u1",
+            "session_id": "s1",
+            "product_id": "phone_123",
+            "timestamp": now - 600,
+        },
+        {
+            "user_id": "u1",
+            "session_id": "s1",
+            "product_id": "case_123",
+            "timestamp": now - 590,
+        },
         # Session B: Phone -> Case (recent)
-        {"user_id": "u2", "session_id": "s2", "product_id": "phone_123", "timestamp": now - 500},
-        {"user_id": "u2", "session_id": "s2", "product_id": "case_123",  "timestamp": now - 490},
-
+        {
+            "user_id": "u2",
+            "session_id": "s2",
+            "product_id": "phone_123",
+            "timestamp": now - 500,
+        },
+        {
+            "user_id": "u2",
+            "session_id": "s2",
+            "product_id": "case_123",
+            "timestamp": now - 490,
+        },
         # Session C: Phone -> Charger (older → weaker)
-        {"user_id": "u3", "session_id": "s3", "product_id": "phone_123", "timestamp": now - 3 * 24 * 3600},
-        {"user_id": "u3", "session_id": "s3", "product_id": "charger_123", "timestamp": now - 3 * 24 * 3600 + 10},
-
+        {
+            "user_id": "u3",
+            "session_id": "s3",
+            "product_id": "phone_123",
+            "timestamp": now - 3 * 24 * 3600,
+        },
+        {
+            "user_id": "u3",
+            "session_id": "s3",
+            "product_id": "charger_123",
+            "timestamp": now - 3 * 24 * 3600 + 10,
+        },
         # Session D: Case -> Charger (very recent)
-        {"user_id": "u4", "session_id": "s4", "product_id": "case_123", "timestamp": now - 300},
-        {"user_id": "u4", "session_id": "s4", "product_id": "charger_123", "timestamp": now - 290},
-
+        {
+            "user_id": "u4",
+            "session_id": "s4",
+            "product_id": "case_123",
+            "timestamp": now - 300,
+        },
+        {
+            "user_id": "u4",
+            "session_id": "s4",
+            "product_id": "charger_123",
+            "timestamp": now - 290,
+        },
         # Session E: Case -> Charger (recent)
-        {"user_id": "u5", "session_id": "s5", "product_id": "case_123", "timestamp": now - 200},
-        {"user_id": "u5", "session_id": "s5", "product_id": "charger_123", "timestamp": now - 190},
+        {
+            "user_id": "u5",
+            "session_id": "s5",
+            "product_id": "case_123",
+            "timestamp": now - 200,
+        },
+        {
+            "user_id": "u5",
+            "session_id": "s5",
+            "product_id": "charger_123",
+            "timestamp": now - 190,
+        },
     ]
 
     stats = build_session_transitions(interactions)
@@ -80,6 +127,7 @@ def run_manual_check():
         print(f"Got:       {top_pid}")
         print(f"Score:     {score:.6f}")
         print(f"Result:    {status}")
+
 
 if __name__ == "__main__":
     run_manual_check()

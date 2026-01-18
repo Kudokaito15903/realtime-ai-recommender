@@ -92,7 +92,6 @@ def _ensure_tables():
             last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         """,
-
         # Content table
         """
         CREATE TABLE IF NOT EXISTS content (
@@ -160,9 +159,11 @@ class PostgresEventProcessor(EventProcessorInterface):
     def publish_event(self, event_data: Dict[str, Any]) -> Optional[str]:
         """Publish a generic event"""
         event_type = event_data.get("event_type", "unknown")
-        entity_id = event_data.get("content_id") or event_data.get("product_id") or "unknown"
+        entity_id = (
+            event_data.get("content_id") or event_data.get("product_id") or "unknown"
+        )
         real_data = event_data.get("data", event_data)
-        
+
         return self._publish_event(event_type, entity_id, real_data)
 
     def _publish_event(
@@ -538,7 +539,11 @@ class PostgresUserBehavior(UserBehaviorInterface):
         logger.info("Postgres User Behavior initialized")
 
     def _insert_event(
-        self, user_id: str, product_id: str, event_type: str, session_id: Optional[str] = None
+        self,
+        user_id: str,
+        product_id: str,
+        event_type: str,
+        session_id: Optional[str] = None,
     ) -> bool:
         try:
             conn = _get_pg_conn()
@@ -550,7 +555,13 @@ class PostgresUserBehavior(UserBehaviorInterface):
                             INSERT INTO user_views (user_id, product_id, event_type, session_id, timestamp)
                             VALUES (%s, %s, %s, %s, %s);
                             """,
-                            (user_id, product_id, event_type, session_id, datetime.utcnow()),
+                            (
+                                user_id,
+                                product_id,
+                                event_type,
+                                session_id,
+                                datetime.utcnow(),
+                            ),
                         )
                 # Update category popularity
                 self._update_category_popularity(product_id)
@@ -564,16 +575,24 @@ class PostgresUserBehavior(UserBehaviorInterface):
             logger.error(f"Error tracking {event_type}: {e}")
             return False
 
-    def track_view(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+    def track_view(
+        self, user_id: str, product_id: str, session_id: Optional[str] = None
+    ) -> bool:
         return self._insert_event(user_id, product_id, "view", session_id)
 
-    def track_click(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+    def track_click(
+        self, user_id: str, product_id: str, session_id: Optional[str] = None
+    ) -> bool:
         return self._insert_event(user_id, product_id, "click", session_id)
 
-    def track_add_to_cart(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+    def track_add_to_cart(
+        self, user_id: str, product_id: str, session_id: Optional[str] = None
+    ) -> bool:
         return self._insert_event(user_id, product_id, "add_to_cart", session_id)
 
-    def track_purchase(self, user_id: str, product_id: str, session_id: Optional[str] = None) -> bool:
+    def track_purchase(
+        self, user_id: str, product_id: str, session_id: Optional[str] = None
+    ) -> bool:
         return self._insert_event(user_id, product_id, "purchase", session_id)
 
     def get_user_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
@@ -801,7 +820,6 @@ class PostgresUserBehavior(UserBehaviorInterface):
             return None
 
 
-
 class PostgresContentStore(ContentStoreInterface):
     """PostgreSQL content storage implementation."""
 
@@ -818,8 +836,16 @@ class PostgresContentStore(ContentStoreInterface):
                 "category": content_data.get("category", ""),
                 "tags": json.dumps(content_data.get("tags", [])),
                 "status": content_data.get("status", "published"),
-                "created_at": datetime.utcnow() if "created_at" not in content_data else datetime.fromtimestamp(content_data["created_at"]),
-                "updated_at": datetime.utcnow() if "updated_at" not in content_data else datetime.fromtimestamp(content_data["updated_at"]),
+                "created_at": (
+                    datetime.utcnow()
+                    if "created_at" not in content_data
+                    else datetime.fromtimestamp(content_data["created_at"])
+                ),
+                "updated_at": (
+                    datetime.utcnow()
+                    if "updated_at" not in content_data
+                    else datetime.fromtimestamp(content_data["updated_at"])
+                ),
             }
 
             conn = _get_pg_conn()
@@ -880,7 +906,7 @@ class PostgresContentStore(ContentStoreInterface):
                         tags = row.get("tags")
                         if isinstance(tags, str):
                             tags = json.loads(tags)
-                        
+
                         return {
                             "id": row["content_id"],
                             "title": row["title"],
@@ -901,7 +927,7 @@ class PostgresContentStore(ContentStoreInterface):
         try:
             fields = []
             values = []
-            
+
             if "title" in update_data:
                 fields.append("title = %s")
                 values.append(update_data["title"])
@@ -917,20 +943,20 @@ class PostgresContentStore(ContentStoreInterface):
             if "status" in update_data:
                 fields.append("status = %s")
                 values.append(update_data["status"])
-            
+
             fields.append("updated_at = %s")
             if "updated_at" in update_data:
                 values.append(datetime.fromtimestamp(update_data["updated_at"]))
             else:
                 values.append(datetime.utcnow())
-                
+
             if not fields:
                 return True
-                
+
             values.append(content_id)
-            
+
             query = f"UPDATE content SET {', '.join(fields)} WHERE content_id = %s"
-            
+
             conn = _get_pg_conn()
             try:
                 with conn:
@@ -962,11 +988,11 @@ class PostgresContentStore(ContentStoreInterface):
             return False
 
     def list_content(
-        self, 
-        category: Optional[str] = None, 
-        limit: int = 100, 
+        self,
+        category: Optional[str] = None,
+        limit: int = 100,
         offset: int = 0,
-        status: Optional[str] = None
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         try:
             conn = _get_pg_conn()
@@ -975,38 +1001,40 @@ class PostgresContentStore(ContentStoreInterface):
                     with conn.cursor() as cur:
                         query = "SELECT * FROM content WHERE 1=1"
                         params = []
-                        
+
                         if category:
                             query += " AND category = %s"
                             params.append(category)
-                            
+
                         if status:
                             query += " AND status = %s"
                             params.append(status)
-                            
+
                         query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
                         params.append(limit)
                         params.append(offset)
-                        
+
                         cur.execute(query, tuple(params))
                         rows = cur.fetchall()
-                        
+
                 results = []
                 for row in rows:
                     tags = row.get("tags")
                     if isinstance(tags, str):
                         tags = json.loads(tags)
-                        
-                    results.append({
-                        "id": row["content_id"],
-                        "title": row["title"],
-                        "content": row["content"],
-                        "category": row["category"],
-                        "tags": tags or [],
-                        "status": row["status"],
-                        "created_at": row.get("created_at"),
-                        "updated_at": row.get("updated_at"),
-                    })
+
+                    results.append(
+                        {
+                            "id": row["content_id"],
+                            "title": row["title"],
+                            "content": row["content"],
+                            "category": row["category"],
+                            "tags": tags or [],
+                            "status": row["status"],
+                            "created_at": row.get("created_at"),
+                            "updated_at": row.get("updated_at"),
+                        }
+                    )
                 return results
             finally:
                 conn.close()

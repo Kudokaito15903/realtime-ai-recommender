@@ -5,16 +5,13 @@ import uuid
 
 BASE_URL = "http://localhost:8000/chatbot/chat"
 
+
 def test_caching():
     session_id = str(uuid.uuid4())
     query = "Chính sách đổi trả như thế nào?"
-    
-    payload = {
-        "query": query,
-        "session_id": session_id,
-        "top_k": 3
-    }
-    
+
+    payload = {"query": query, "session_id": session_id, "top_k": 3}
+
     print(f"Testing with Session ID: {session_id}")
     print(f"Query: {query.encode('ascii', 'xmlcharrefreplace').decode()}")
     print("-" * 50)
@@ -22,11 +19,13 @@ def test_caching():
     # 1. Simple Intent (Greeting) - Expect < 50ms
     print("1. Sending Simple Intent ('Xin chào')...")
     start_time = time.time()
-    resp_simple = requests.post(BASE_URL, json={"query": "Xin chào", "session_id": session_id})
+    resp_simple = requests.post(
+        BASE_URL, json={"query": "Xin chào", "session_id": session_id}
+    )
     resp_simple.raise_for_status()
     dur_simple = time.time() - start_time
     print(f"   Response received in {dur_simple:.3f}s")
-    if dur_simple < 1.0: # Giving some buffer for network/fastapi overhead
+    if dur_simple < 1.0:  # Giving some buffer for network/fastapi overhead
         print("✅ SUCCESS: Simple intent is FAST.")
     else:
         print(f"⚠️ WARNING: Simple intent took too long ({dur_simple:.3f}s)")
@@ -49,13 +48,16 @@ def test_caching():
     data2 = resp2.json()
     dur2 = time.time() - start_time
     print(f"   Response received in {dur2:.3f}s")
-    
+
     if dur2 < 0.2:
         print("✅ SUCCESS: Cache HIT is Instant.")
     elif dur2 < dur1 * 0.5:
         print("✅ SUCCESS: Significantly faster.")
     else:
-        print(f"❌ FAILURE: Cache did not improve speed significantly ({dur2:.3f}s vs {dur1:.3f}s)")
+        print(
+            f"❌ FAILURE: Cache did not improve speed significantly ({dur2:.3f}s vs {dur1:.3f}s)"
+        )
+
 
 if __name__ == "__main__":
     test_caching()

@@ -28,15 +28,14 @@ INTERACTION_TYPES = [
     ("track-purchase", 3),
 ]
 
+
 # =========================
 # FETCH PRODUCTS
 # =========================
 def get_real_product_ids(limit: int = 100) -> List[str]:
     try:
         resp = requests.get(
-            API_PRODUCTS_URL,
-            params={"limit": limit},
-            timeout=REQUEST_TIMEOUT
+            API_PRODUCTS_URL, params={"limit": limit}, timeout=REQUEST_TIMEOUT
         )
         resp.raise_for_status()
 
@@ -61,9 +60,7 @@ if not PRODUCT_IDS:
 # USER + CLUSTER GENERATION
 # =========================
 def generate_users_and_clusters(
-    product_ids: List[str],
-    num_users: int,
-    num_clusters: int = 4
+    product_ids: List[str], num_users: int, num_clusters: int = 4
 ) -> Tuple[List[List[str]], List[Dict]]:
     """
     - Split products into clusters (simulating categories)
@@ -74,18 +71,19 @@ def generate_users_and_clusters(
 
     chunk_size = len(shuffled) // num_clusters + 1
     clusters = [
-        shuffled[i:i + chunk_size]
-        for i in range(0, len(shuffled), chunk_size)
+        shuffled[i : i + chunk_size] for i in range(0, len(shuffled), chunk_size)
     ]
 
     users = []
     for i in range(num_users):
         main, secondary = random.sample(range(len(clusters)), 2)
-        users.append({
-            "id": f"user_{i+1:03d}",
-            "main_cluster": main,
-            "secondary_cluster": secondary
-        })
+        users.append(
+            {
+                "id": f"user_{i+1:03d}",
+                "main_cluster": main,
+                "secondary_cluster": secondary,
+            }
+        )
 
     return clusters, users
 
@@ -121,11 +119,7 @@ def choose_interaction_type() -> str:
     return random.choices(types, weights=weights, k=1)[0]
 
 
-def send_event(
-    user_id: str,
-    product_id: str,
-    interaction_type: str
-) -> bool:
+def send_event(user_id: str, product_id: str, interaction_type: str) -> bool:
     endpoint = f"{API_BASE_URL}/{interaction_type}"
 
     for attempt in range(MAX_RETRIES + 1):
@@ -134,7 +128,7 @@ def send_event(
                 endpoint,
                 params={"product_id": product_id},
                 headers={"user-id": user_id},
-                timeout=REQUEST_TIMEOUT
+                timeout=REQUEST_TIMEOUT,
             )
             return resp.status_code == 200
 
@@ -144,17 +138,12 @@ def send_event(
             time.sleep(0.2)
 
 
-def perform_interaction(
-    user: Dict,
-    clusters: List[List[str]]
-) -> Tuple[bool, str]:
+def perform_interaction(user: Dict, clusters: List[List[str]]) -> Tuple[bool, str]:
     product_id = choose_product(user, clusters)
     interaction_type = choose_interaction_type()
 
     success = send_event(
-        user_id=user["id"],
-        product_id=product_id,
-        interaction_type=interaction_type
+        user_id=user["id"], product_id=product_id, interaction_type=interaction_type
     )
 
     return success, interaction_type
@@ -168,10 +157,7 @@ def main():
     print("USER BEHAVIOR SIMULATION START")
     print("=" * 60)
 
-    clusters, users = generate_users_and_clusters(
-        PRODUCT_IDS,
-        NUM_USERS
-    )
+    clusters, users = generate_users_and_clusters(PRODUCT_IDS, NUM_USERS)
 
     print(f"[INFO] Users        : {len(users)}")
     print(f"[INFO] Clusters     : {len(clusters)}")
@@ -184,23 +170,14 @@ def main():
 
     start_time = time.time()
 
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=CONCURRENCY
-    ) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as executor:
 
         futures = [
-            executor.submit(
-                perform_interaction,
-                random.choice(users),
-                clusters
-            )
+            executor.submit(perform_interaction, random.choice(users), clusters)
             for _ in range(TOTAL_INTERACTIONS)
         ]
 
-        for idx, future in enumerate(
-            concurrent.futures.as_completed(futures),
-            start=1
-        ):
+        for idx, future in enumerate(concurrent.futures.as_completed(futures), start=1):
             success, interaction_type = future.result()
 
             if success:
@@ -208,10 +185,7 @@ def main():
                 interaction_counter[interaction_type] += 1
 
             if idx % 25 == 0:
-                print(
-                    f"[{idx}/{TOTAL_INTERACTIONS}] "
-                    f"Success: {success_count}"
-                )
+                print(f"[{idx}/{TOTAL_INTERACTIONS}] " f"Success: {success_count}")
 
     elapsed = time.time() - start_time
 

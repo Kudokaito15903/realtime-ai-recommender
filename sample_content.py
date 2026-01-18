@@ -8,12 +8,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from services.content_service import ContentService
 from loguru import logger
 
+
 def generate_sample_content():
     """
     Generate sample content (FAQ, Policies, Guides) for the Chatbot RAG system.
     """
     service = ContentService()
-    
+
     # Danh sách nội dung mẫu (Tiếng Việt)
     samples = [
         {
@@ -31,7 +32,7 @@ def generate_sample_content():
             3. Đối tác vận chuyển: Chúng tôi hợp tác với Giao Hàng Nhanh (GHN), Viettel Post và J&T Express.
             """,
             "tags": ["shipping", "delivery", "policy", "giao hàng"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Chính sách đổi trả và hoàn tiền",
@@ -50,7 +51,7 @@ def generate_sample_content():
                - Bước 3: Chúng tôi kiểm tra và hoàn tiền hoặc gửi sản phẩm mới trong 3 ngày làm việc.
             """,
             "tags": ["return", "refund", "policy", "đổi trả"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Hướng dẫn phương thức thanh toán",
@@ -67,7 +68,7 @@ def generate_sample_content():
             4. Thẻ tín dụng/ghi nợ quốc tế (Visa/Mastercard).
             """,
             "tags": ["payment", "guide", "thanh toán", "banking"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Làm sao để theo dõi đơn hàng?",
@@ -82,7 +83,7 @@ def generate_sample_content():
             Ngoài ra, bạn sẽ nhận được email/SMS thông báo khi trạng thái đơn hàng thay đổi.
             """,
             "tags": ["tracking", "order", "faq", "đơn hàng"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Chính sách bảo hành sản phẩm",
@@ -95,7 +96,7 @@ def generate_sample_content():
             - Điều kiện: Lỗi do nhà sản xuất. Không bao gồm lỗi do người dùng (rơi vỡ, vào nước, tự ý tháo lắp).
             """,
             "tags": ["warranty", "policy", "bảo hành"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Liên hệ hỗ trợ khách hàng",
@@ -109,7 +110,7 @@ def generate_sample_content():
             - Địa chỉ văn phòng: Tòa nhà Bitexco, Q1, TP.HCM.
             """,
             "tags": ["support", "contact", "liên hệ", "cskh"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Hướng dẫn chọn size quần áo",
@@ -126,7 +127,7 @@ def generate_sample_content():
             Lưu ý: Nếu bạn có vòng bụng lớn hoặc thích mặc rộng thoải mái, hãy chọn lớn hơn 1 size.
             """,
             "tags": ["size", "guide", "clothing", "kích thước"],
-            "status": "published"
+            "status": "published",
         },
         {
             "title": "Quy định về bảo mật thông tin",
@@ -139,23 +140,24 @@ def generate_sample_content():
             - Hệ thống thanh toán được mã hóa chuẩn quốc tế.
             """,
             "tags": ["privacy", "security", "bảo mật"],
-            "status": "published"
-        }
+            "status": "published",
+        },
     ]
-    
+
     logger.info(f"🚀 Bắt đầu tạo {len(samples)} nội dung mẫu cho Chatbot...")
-    
+
     success_count = 0
     for item in samples:
         try:
             content_id = service.create_content(item)
             logger.info(f"✅ Đã tạo: {item['title']} (ID: {content_id})")
             success_count += 1
-            time.sleep(0.05) 
+            time.sleep(0.05)
         except Exception as e:
             logger.error(f"❌ Lỗi khi tạo {item['title']}: {e}")
 
     logger.info(f"🎉 Hoàn tất! Đã tạo {success_count}/{len(samples)} nội dung.")
+
 
 if __name__ == "__main__":
     generate_sample_content()

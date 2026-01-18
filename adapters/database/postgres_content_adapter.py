@@ -9,6 +9,7 @@ from loguru import logger
 
 from adapters.interfaces import ContentStoreInterface
 
+
 def _get_pg_conn():
     dsn = os.getenv("POSTGRES_DSN")
     if not dsn:
@@ -170,9 +171,7 @@ class PostgresContentStore(ContentStoreInterface):
                 conditions.append("status = %(status)s")
                 params["status"] = status
 
-            where_clause = (
-                f"WHERE {' AND '.join(conditions)}" if conditions else ""
-            )
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
             sql = f"""
                 SELECT *
@@ -205,6 +204,7 @@ class PostgresContentStore(ContentStoreInterface):
         except Exception as e:
             logger.error(f"Error listing content: {e}")
             return []
+
 
 def get_postgres_content_store() -> PostgresContentStore:
     return PostgresContentStore()

@@ -32,8 +32,16 @@ class SupabaseContentStore(ContentStoreInterface):
                 "category": content_data["category"],
                 "tags": json.dumps(content_data.get("tags", [])),
                 "status": content_data.get("status", "published"),
-                "created_at": datetime.utcnow().isoformat() if "created_at" not in content_data else datetime.fromtimestamp(content_data["created_at"]).isoformat(),
-                "updated_at": datetime.utcnow().isoformat() if "updated_at" not in content_data else datetime.fromtimestamp(content_data["updated_at"]).isoformat(),
+                "created_at": (
+                    datetime.utcnow().isoformat()
+                    if "created_at" not in content_data
+                    else datetime.fromtimestamp(content_data["created_at"]).isoformat()
+                ),
+                "updated_at": (
+                    datetime.utcnow().isoformat()
+                    if "updated_at" not in content_data
+                    else datetime.fromtimestamp(content_data["updated_at"]).isoformat()
+                ),
             }
 
             result = (
@@ -98,7 +106,9 @@ class SupabaseContentStore(ContentStoreInterface):
             if "status" in update_data:
                 update_dict["status"] = update_data["status"]
             if "updated_at" in update_data:
-                update_dict["updated_at"] = datetime.fromtimestamp(update_data["updated_at"]).isoformat()
+                update_dict["updated_at"] = datetime.fromtimestamp(
+                    update_data["updated_at"]
+                ).isoformat()
 
             result = (
                 self.client.table("content")
@@ -135,11 +145,11 @@ class SupabaseContentStore(ContentStoreInterface):
             return False
 
     def list_content(
-        self, 
-        category: Optional[str] = None, 
-        limit: int = 100, 
+        self,
+        category: Optional[str] = None,
+        limit: int = 100,
         offset: int = 0,
-        status: Optional[str] = None
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List content with optional filtering"""
         try:
@@ -147,7 +157,7 @@ class SupabaseContentStore(ContentStoreInterface):
 
             if category:
                 query = query.eq("category", category)
-            
+
             if status:
                 query = query.eq("status", status)
 
@@ -155,7 +165,7 @@ class SupabaseContentStore(ContentStoreInterface):
 
             contents = []
             for content in result.data:
-                    contents.append(
+                contents.append(
                     {
                         "id": content["content_id"],
                         "title": content["title"],

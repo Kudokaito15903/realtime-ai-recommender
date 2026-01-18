@@ -51,10 +51,12 @@ class SupabaseEventProcessor(EventProcessorInterface):
         """Publish a generic event"""
         event_type = event_data.get("event_type", "unknown")
         # Use content_id or product_id or just "unknown"
-        entity_id = event_data.get("content_id") or event_data.get("product_id") or "unknown"
+        entity_id = (
+            event_data.get("content_id") or event_data.get("product_id") or "unknown"
+        )
         # Extract actual data payload if wrapped
         real_data = event_data.get("data", event_data)
-        
+
         return self._publish_event(event_type, entity_id, real_data)
 
     def _publish_event(

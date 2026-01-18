@@ -106,6 +106,17 @@ class ProductInfoHandler:
         # Build comprehensive context
         context_text = self.rag_engine.build_context(chunks, max_tokens=2000)
         
+        # Enrich context with hydrated product specs
+        for p in products:
+            p_name = p.get('name', 'Unknown')
+            specs = p.get('specifications', [])
+            if specs:
+                context_text += f"\n\nThông số kỹ thuật chi tiết của {p_name}:\n"
+                valid_keys = ["CPU", "RAM", "Dung lượng", "Màn hình", "Pin", "Camera sau", "Camera trước", "Sạc"]
+                for s in specs:
+                    if s.get("key") in valid_keys:
+                        context_text += f"- {s.get('key')}: {s.get('value')}\n"
+        
         # Enhance query to ensure LLM understands we want detailed product info
         enhanced_query = f"""Người dùng muốn biết thông tin chi tiết về sản phẩm: {query}
 

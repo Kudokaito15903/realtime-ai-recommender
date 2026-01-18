@@ -31,7 +31,6 @@ class ChatbotOrchestrator:
         self.conversation_manager = ConversationManager()
 
         # Intent handlers
-        # Intent handlers
         product_handler = ProductInfoHandler()
         self.handlers = {
             "product_info": product_handler,

@@ -63,18 +63,16 @@ class ResponseGenerator:
 Nhiệm vụ: Trả lời câu hỏi về sản phẩm dựa TRỪNG MỰC trên thông tin có sẵn trong CONTEXT.
 
 QUY TẮC NGHIÊM NGẶT - TUYỆT ĐỐI TUÂN THỦ:
-1. CHỈ sử dụng thông tin có trong phần CONTEXT - KHÔNG được bịa đặt, suy đoán, hoặc thêm thông tin từ kiến thức của bạn
-2. Nếu thông tin KHÔNG có trong CONTEXT, bạn PHẢI nói rõ: "Tôi không tìm thấy thông tin này trong dữ liệu hiện có"
-3. KHÔNG được giả định, suy luận, hoặc thêm chi tiết không có trong CONTEXT
-4. Nếu CONTEXT không đủ thông tin để trả lời đầy đủ, chỉ trả lời phần có trong CONTEXT và nói rõ phần nào không có
-5. Tên sản phẩm, thông số, giá cả PHẢI KHỚP chính xác với CONTEXT
-6. Nếu CONTEXT trống hoặc không có thông tin liên quan, trả lời: "Xin lỗi, tôi không tìm thấy thông tin về [sản phẩm/câu hỏi] trong dữ liệu hiện có"
+1. CHỈ sử dụng thông tin được cung cấp bên dưới - KHÔNG được bịa đặt, suy đoán
+2. Nếu thông tin KHÔNG có, bạn PHẢI nói rõ: "Tôi không tìm thấy thông tin này trong dữ liệu"
+3. TRẢ LỜI TỰ NHIÊN: Không được nhắc đến từ "CONTEXT" hay "ngữ cảnh" trong câu trả lời. Thay vào đó hãy nói "Theo thông tin sản phẩm..." hoặc "Dữ liệu cho thấy..."
+4. Nếu thông tin không đủ, chỉ trả lời phần có.
+5. Tên sản phẩm, thông số, giá cả PHẢI KHỚP chính xác.
 
 CÁCH TRẢ LỜI:
-- Trả lời đầy đủ các thông tin có trong CONTEXT: tên sản phẩm, thông số kỹ thuật, tính năng, giá cả (nếu có), bảo hành
-- Tổng hợp thông tin từ CONTEXT một cách có tổ chức
-- Sử dụng ngôn ngữ tự nhiên, thân thiện
-- Nếu thiếu thông tin, nói rõ phần nào không có trong dữ liệu"""
+- Trả lời trực tiếp vào câu hỏi.
+- Tổng hợp thông tin một cách có tổ chức.
+- Sử dụng ngôn ngữ tự nhiên, thân thiện."""
 
         prompt = self._build_prompt(
             query=query,
@@ -103,12 +101,11 @@ CÁCH TRẢ LỜI:
 Nhiệm vụ: Giải thích các chính sách dựa TRỪNG MỰC trên thông tin trong CONTEXT.
 
 QUY TẮC NGHIÊM NGẶT:
-1. CHỈ sử dụng thông tin có trong CONTEXT - KHÔNG được bịa đặt hoặc thêm thông tin
-2. Nếu thông tin không có trong CONTEXT, nói rõ: "Thông tin này không có trong chính sách hiện tại"
-3. KHÔNG được giả định hoặc suy luận thêm chi tiết
-4. Liệt kê đầy đủ các phương thức/điều kiện CÓ TRONG CONTEXT
-5. Sử dụng danh sách có số thứ tự để trình bày rõ ràng
-6. Nếu CONTEXT không đủ, chỉ trả lời phần có và nói rõ phần thiếu"""
+1. CHỈ sử dụng thông tin được cung cấp - KHÔNG được bịa đặt
+2. Nếu thông tin không có, nói rõ: "Thông tin này không có trong chính sách hiện tại"
+3. TRẢ LỜI TỰ NHIÊN: Không nhắc đến từ "CONTEXT".
+4. Liệt kê đầy đủ các phương thức/điều kiện có trong dữ liệu.
+5. Sử dụng danh sách có số thứ tự để trình bày rõ ràng."""
 
         prompt = self._build_prompt(
             query=query,
@@ -137,11 +134,10 @@ QUY TẮC NGHIÊM NGẶT:
 Nhiệm vụ: Hỗ trợ khách hàng dựa TRỪNG MỰC trên thông tin trong CONTEXT.
 
 QUY TẮC NGHIÊM NGẶT:
-1. CHỈ sử dụng thông tin có trong CONTEXT - KHÔNG được bịa đặt hướng dẫn
-2. Nếu thông tin không có trong CONTEXT, nói rõ: "Tôi cần kiểm tra thông tin này, vui lòng liên hệ bộ phận hỗ trợ"
-3. Cung cấp hướng dẫn rõ ràng DỰA TRÊN CONTEXT
-4. Thân thiện, chuyên nghiệp
-5. Nếu CONTEXT không đủ, chỉ trả lời phần có và đề xuất liên hệ hỗ trợ cho phần còn lại"""
+1. CHỈ sử dụng thông tin được cung cấp
+2. Nếu thông tin không có, nói rõ: "Tôi cần kiểm tra lại thông tin này"
+3. TRẢ LỜI TỰ NHIÊN: Không dùng từ "CONTEXT".
+4. Thân thiện, chuyên nghiệp."""
 
         prompt = self._build_prompt(
             query=query,
@@ -170,12 +166,10 @@ QUY TẮC NGHIÊM NGẶT:
 Nhiệm vụ: So sánh các sản phẩm dựa TRỪNG MỰC trên thông tin trong CONTEXT.
 
 QUY TẮC NGHIÊM NGẶT:
-1. CHỈ so sánh các thông tin CÓ TRONG CONTEXT - KHÔNG được bịa đặt hoặc suy đoán
-2. Nếu thông tin so sánh không có trong CONTEXT, nói rõ: "Thông tin này không có trong dữ liệu"
-3. So sánh từng tiêu chí rõ ràng DỰA TRÊN CONTEXT
-4. Đưa ra nhận xét và gợi ý CHỈ dựa trên thông tin trong CONTEXT
-5. Trình bày dễ so sánh (bảng hoặc danh sách)
-6. Nếu thiếu thông tin để so sánh, nói rõ phần nào không có"""
+1. CHỈ so sánh các thông tin ĐƯỢC CUNG CẤP - KHÔNG được bịa đặt
+2. Nếu thông tin so sánh không có, nói rõ: "Thông tin này chưa được cập nhật"
+3. TRẢ LỜI TỰ NHIÊN: Không nhắc đến từ "CONTEXT".
+4. Trình bày dễ so sánh (bảng hoặc danh sách)."""
 
         prompt = self._build_prompt(
             query=query,
@@ -272,11 +266,11 @@ QUY TẮC NGHIÊM NGẶT:
                 in_question = True
                 in_system = False
                 continue
-            elif "## ANSWER:" in line or "## CONVERSATION HISTORY:" in line:
+            elif "## ANSWER:" in line or "## CONVERSATION HISTORY:" in line or "## ANSWER" in line:
                 in_context = False
                 in_question = False
                 in_system = False
-                continue
+                break
             
             if in_system:
                 system_prompt += line + "\n"

@@ -30,7 +30,7 @@ class IntentClassifier:
             "description": "Hỏi về thông tin, tính năng, cấu hình sản phẩm cụ thể",
             "keywords": [
                 "thông số", "cấu hình", "tính năng", "màu", "giá", "pin", "camera",
-                "màn hình", "cpu", "ram", "bộ nhớ", "spec", "chi tiết",
+                "màn hình", "cpu", "ram", "bộ nhớ", "spec", "chi tiết", "chip", "vi xử lý",
             ],
             "examples": [
                 "iPhone 17 Pro có những tính năng gì?",
@@ -38,6 +38,11 @@ class IntentClassifier:
                 "Máy này pin trâu không?",
                 "Cấu hình như thế nào?",
             ],
+        },
+        "greeting": {
+            "description": "Chào hỏi",
+            "keywords": ["xin chào", "chào", "hello", "hi", "good morning", "alo"],
+            "examples": ["Xin chào", "Hello bot"],
         },
         "product_search": {
             "description": "Tìm kiếm sản phẩm theo tiêu chí chung",
@@ -239,8 +244,9 @@ class IntentClassifier:
                  confidence = 0.85
 
         if self._has_greeting_pattern(message_lower):
-            if best_intent == "general":
-                confidence = max(confidence, 0.95)
+            # Override to greeting for clear greeting patterns
+            best_intent = "greeting"
+            confidence = 0.95
 
         logger.debug(f"Rule-based: {best_intent} (confidence: {confidence:.2f})")
 
@@ -268,6 +274,12 @@ class IntentClassifier:
             r".+ bao nhiêu tiền",
             r"cấu hình .+",
             r"thông số .+",
+            r"chip .+",
+            r".+ chip là gì",
+            r"pin .+",
+            r".+ pin bao nhiêu",
+            r"ram .+",
+            r"cpu .+",
         ]
         return any(re.search(p, text) for p in patterns)
 

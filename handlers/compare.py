@@ -40,9 +40,15 @@ class CompareHandler:
         logger.info(f"Handling compare: {query[:50]}...")
 
         # Step 1: Extract product names/IDs from query
-        product_ids = self._extract_product_ids_for_comparison(query, context)
+        # NOTE: Regex extraction returns partial NAMES, not IDs. 
+        # RAG Engine filters strict IDs, so passing names causes 0 results.
+        # We only pass IDs if they come from context (clicked items).
+        product_ids = None
+        if context and "product_ids" in context:
+             product_ids = context["product_ids"]
 
         # Step 2: Retrieve product chunks for comparison
+        # If no strict IDs, we rely on semantic search of the query
         chunks = await self.rag_engine.retrieve_product_chunks(
             query=query,
             product_ids=product_ids,
@@ -113,6 +119,48 @@ class CompareHandler:
         
         return ids if ids else None
 
+        return products[:3]  # Limit to 3 products for comparison
+
+    def _normalize_product_specs(self, product: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize product specifications for comparison table.
+        Maps raw specs (list of dicts) to normalized keys.
+        """
+        specs = product.get("specifications", [])
+        normalized = {}
+        
+        # Mapping from raw key to normalized key
+        key_map = {
+            "CPU": "cpu",
+            "RAM": "ram_gb", 
+            "Dung lượng": "storage_gb",
+            "Màn hình": "screen_size_inch",
+            "Camera sau": "camera_mp",
+            "Pin": "battery_hours",
+            "Sạc": "charging_speed",
+            "Chất liệu": "material"
+        }
+
+        for spec in specs:
+             raw_key = spec.get("key")
+             value = spec.get("value")
+             
+             if raw_key in key_map:
+                 norm_key = key_map[raw_key]
+                 # Simple cleaning logic
+                 if norm_key == "ram_gb":
+                     value = value.replace("GB", "").strip()
+                 elif norm_key == "storage_gb":
+                     value = value.replace("GB", "").strip()
+                 elif norm_key == "screen_size_inch":
+                     value = value.split(" inch")[0].strip()
+                 elif norm_key == "battery_hours":
+                     value = value.replace(" mAh", "").strip()
+                 
+                 normalized[norm_key] = value
+                 
+        return normalized
+
     async def _get_products_from_chunks(
         self, chunks: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
@@ -128,6 +176,8 @@ class CompareHandler:
                 try:
                     product = self.product_store.get_product(product_id)
                     if product:
+                        # Normalize specs for comparison
+                        product["specs_normalized"] = self._normalize_product_specs(product)
                         products.append(product)
                         product_ids_seen.add(product_id)
                 except Exception as e:

@@ -183,14 +183,15 @@ class ChatbotService:
         return self.embedding_model.embed_text(text).tolist()
 
     def _fetch_product_from_db(self, product_id: str) -> Dict:
-        return self.product_store.get_product_by_id(product_id)
+        return self.product_store.get_product(product_id)
 
     def _extract_product_info(self, data: Dict, meta: Dict) -> Dict:
         return {
             "name": data.get("name") or meta.get("name"),
-            "price": data.get("price") or meta.get("price"),
+            "price": data.get("price") or data.get("listPrice") or data.get("price_avg") or meta.get("price"),
             "brand": data.get("brand") or meta.get("brand"),
-            "rating": data.get("avgRating") or meta.get("avg_rating"),
+            "rating": data.get("avgRating") or data.get("avg_rating") or meta.get("avg_rating"),
+            "specs": data.get("specifications") or [],
         }
 
     def _call_genai(
@@ -206,7 +207,15 @@ class ChatbotService:
                     max_output_tokens=max_tokens, temperature=temperature
                 ),
             )
-            return response.text
+            try:
+                return response.text
+            except ValueError:
+                # Handle cases where response is blocked or empty
+                logger.error(f"GenAI blocked/empty response. Feedback: {response.prompt_feedback}")
+                if response.candidates:
+                    logger.error(f"Candidate safety: {response.candidates[0].safety_ratings}")
+                    logger.error(f"Finish reason: {response.candidates[0].finish_reason}")
+                return "Xin lỗi, tôi không thể trả lời câu hỏi này do vấn đề an toàn nội dung."
         except Exception as e:
             logger.error(f"GenAI call failed: {e}")
             return "Xin lỗi, tôi đang gặp sự cố kết nối."
@@ -369,6 +378,19 @@ class ChatbotService:
                     parts.append(f"Brand: {info['brand']}")
                 if info["rating"]:
                     parts.append(f"{info['rating']}/5⭐")
+                
+                # Add specs if available
+                if info.get("specs"):
+                    # Extract vital specs to save tokens
+                    specs_list = info["specs"]
+                    valid_keys = ["CPU", "RAM", "Dung lượng", "Màn hình", "Pin", "Camera sau", "Camera trước"]
+                    specs_str = []
+                    for s in specs_list:
+                        if s.get("key") in valid_keys:
+                            specs_str.append(f"{s.get('key')}: {s.get('value')}")
+                    
+                    if specs_str:
+                        parts.append(f"Specs: {', '.join(specs_str)}")
 
                 context_parts.append(" | ".join(parts))
 

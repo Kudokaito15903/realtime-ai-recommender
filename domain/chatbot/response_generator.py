@@ -209,40 +209,39 @@ QUY TẮC NGHIÊM NGẶT:
             return self._generate_fallback_from_context(prompt)
     
     def _generate_fallback_from_context(self, prompt: str) -> str:
+        # Robust parsing of prompt sections
+        sections = {
+            "system": "",
+            "context": "",
+            "history": "",
+            "question": ""
+        }
+        
+        current_section = "system"
         lines = prompt.split("\n")
-        context = ""
-        query = ""
-        system_prompt = ""
-        in_context = False
-        in_question = False
-        in_system = True
         
         for line in lines:
-            if "## CONTEXT:" in line:
-                in_context = True
-                in_question = False
-                in_system = False
+            if "## CONTEXT" in line:
+                current_section = "context"
                 continue
-            elif "## QUESTION:" in line:
-                in_context = False
-                in_question = True
-                in_system = False
+            elif "## CONVERSATION HISTORY" in line:
+                current_section = "history"
                 continue
-            elif "## ANSWER:" in line or "## CONVERSATION HISTORY:" in line or "## ANSWER" in line:
-                in_context = False
-                in_question = False
-                in_system = False
+            elif "## QUESTION" in line:
+                current_section = "question"
+                continue
+            elif "## ANSWER" in line:
                 break
+                
+            sections[current_section] += line + "\n"
             
-            if in_system:
-                system_prompt += line + "\n"
-            elif in_context:
-                context += line + "\n"
-            elif in_question:
-                query = line.strip()
+        context = sections["context"].strip()
+        query = sections["question"].strip()
+        system_prompt = sections["system"]
         
-        context = context.strip()
-        query = query.strip()
+        # If context is empty, try to detect if it was just missed headers
+        if not context:
+            logger.debug("Context empty after parsing, checking raw prompt for context marker")
         
         if context:
             context_clean = context.replace("[Nguồn", "").replace("]", "")
@@ -253,15 +252,15 @@ QUY TẮC NGHIÊM NGẶT:
             is_cskh = "hỗ trợ" in system_prompt.lower() or "support" in system_prompt.lower()
             is_compare = "so sánh" in system_prompt.lower() or "compare" in system_prompt.lower()
             
-          
-            meaningful_lines = [l for l in context_lines if l and len(l.strip()) > 15]
+            # Relaxed filter: retain lines with > 5 chars (keeps specs like "RAM: 8GB")
+            meaningful_lines = [l for l in context_lines if l and len(l.strip()) > 5]
             
             if not meaningful_lines:
-                
                 if context_lines:
-                    return "Tôi tìm thấy một số thông tin trong dữ liệu:\n\n" + "\n".join(context_lines[:5]) + "\n\nLưu ý: Thông tin trên là tất cả những gì tôi có trong dữ liệu. Nếu bạn cần thông tin chi tiết hơn, vui lòng liên hệ bộ phận hỗ trợ."
-                return "Xin lỗi, tôi không tìm thấy thông tin chi tiết về câu hỏi này trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ."
+                    return "Tôi tìm thấy một số thông tin trong dữ liệu:\n\n" + "\n".join(context_lines[:5]) + "\n\nLưu ý: Thông tin trên là tất cả những gì tôi có trong dữ liệu."
+                return "Xin lỗi, tôi không tìm thấy thông tin chi tiết về câu hỏi này trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn."
             
+            response = ""
             if is_policy:
                 if query:
                     response = f"Về câu hỏi '{query}', "
@@ -293,7 +292,7 @@ QUY TẮC NGHIÊM NGẶT:
                 else:
                     response = "Thông tin sản phẩm:\n\n"
                 
-                for line in meaningful_lines[:10]:
+                for line in meaningful_lines[:15]:  # Increased limit for specs
                     response += f"{line}\n"
                     
             elif is_compare:
@@ -325,12 +324,12 @@ QUY TẮC NGHIÊM NGẶT:
             
             response = response.strip()
             
-            if response and not response.endswith(".") and not response.endswith("?") and not response.endswith(":"):
+            if response and not response.endswith(".") and not response.endswith("?") and not response.endswith(":") and not response.endswith("\n"):
                 response += "."
             
             return response
         
-        # No context availabe - be explicit about not having information
+        # No context available
         if query:
-            return f"Xin lỗi, tôi không tìm thấy thông tin về '{query}' trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ để được giúp đỡ."
+            return f"Xin lỗi, tôi không tìm thấy thông tin về '{query}' trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ."
         return "Xin lỗi, tôi không tìm thấy thông tin phù hợp để trả lời câu hỏi này trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ."

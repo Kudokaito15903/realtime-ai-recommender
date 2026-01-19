@@ -20,7 +20,6 @@ from data.schemas import RecommendationResponse
 from services.recommendation_service import get_recommendation_service
 from services.variant_selector import get_variant_selector
 from adapters.factory import get_user_behavior
-from utils.ab_testing import ABVariant, assign_variant
 from utils.metrics import log_recommendation_event
 
 
@@ -104,35 +103,14 @@ async def get_personalized_recommendations(
         5,
         description="Number of recent interactions to use for session-based recommendations",
     ),
-    ab_experiment: Optional[str] = Header(
-        None,
-        description=(
-            "Optional A/B experiment name. If provided, the backend will "
-            "bucket the user into variants (e.g., different recommendation methods)."
-        ),
-    ),
 ):
     """Get personalized recommendations for a specific user"""
     start_time = time.time()
-    variant = "control"
+    variant = "default"
 
     try:
-        # A/B testing: optionally override 'method' based on experiment & user bucket
+        # Normalize method
         m = (method or "hybrid").strip().lower()
-        if ab_experiment:
-            experiments = {
-                "rec_method": {
-                    "A": ABVariant(name="A", traffic_share=0.5),
-                    "B": ABVariant(name="B", traffic_share=0.5),
-                }
-            }
-            assignment = assign_variant(user_id, experiments)
-            variant = assignment.get("rec_method", "control")
-            if variant == "A":
-                m = "hybrid"
-            elif variant == "B":
-                # Example: compare ALS vs hybrid
-                m = "als"
 
         if m == "vector":
             recommendations = product_recommender.get_personalized_recommendations(

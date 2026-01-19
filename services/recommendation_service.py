@@ -244,7 +244,8 @@ class RecommendationService:
 
         for item in history:
             product_id = item["product_id"]
-            similar = self.get_similar_products(product_id, limit=3)
+            # Increased limit from 3 to 10 to allow more variety
+            similar = self.get_similar_products(product_id, limit=max(10, limit // 2))
             all_recommendations.extend(similar)
 
         # Deduplicate
@@ -450,6 +451,10 @@ class RecommendationService:
             should_train = False
             with self._als_lock:
                 should_train = self._als_model is None or not self._als_model_is_fresh()
+                if self._als_model is None:
+                     logger.info("ALS model is None, attempting to load from disk first...")
+                     self._try_load_als_model()
+                     should_train = self._als_model is None or not self._als_model_is_fresh()
             if should_train:
                 logger.info("ALS model missing/stale; training...")
                 self._train_and_save_als_model()
@@ -462,6 +467,7 @@ class RecommendationService:
             return self.get_popular_in_category(category=None, limit=limit)
 
         ranked = als_recommend_for_user(model, user_id=user_id, Cui=cui, limit=limit)
+        logger.debug(f"ALS returned {len(ranked)} raw items for user {user_id}")
         if not ranked:
             return self.get_popular_in_category(category=None, limit=limit)
 
@@ -481,17 +487,6 @@ class RecommendationService:
     def get_hybrid_recommendations(
         self, user_id: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """
-        Hybrid ranking: session + ALS (if available) + vector-based history as a fallback.
-
-        Flow:
-        1. Fetch user context
-        2. Call ALS recommender
-        3. Call session recommender
-        4. Call embedding recommender
-        5. Merge + rerank
-        6. Return final list
-        """
         if not user_id:
             return []
 
@@ -510,7 +505,13 @@ class RecommendationService:
         except Exception as e:
             logger.warning(f"ALS recommendations failed: {e}")
 
-
+        # 3. Call Popular/Trending (Cold-start & Diversity)
+        try:
+            popular_recs = self.get_popular_in_category(limit=limit)
+            candidates.extend(popular_recs)
+            logger.debug(f"Popularity recommender returned {len(popular_recs)} candidates")
+        except Exception as e:
+            logger.warning(f"Popularity recommendations failed: {e}")
 
         # 4. Call embedding recommender
         try:
@@ -607,6 +608,8 @@ class RecommendationService:
             rtype = rec.get("recommendation_type", "unknown")
             grouped[rtype].append(rec)
 
+        logger.debug(f"Score normalization groups: {list(grouped.keys())}")
+
         for rtype, items in grouped.items():
             if not items:
                 continue
@@ -647,7 +650,9 @@ class RecommendationService:
             "recency_weighted": HYBRID_WEIGHT_VECTOR,
             "similar": HYBRID_WEIGHT_VECTOR,
             "search": HYBRID_WEIGHT_VECTOR,
-            "popular_in_category": 1.0,  # Baseline
+            "popular_in_category": 1.0,
+            "popular_trending": 0.8,
+            "popular_all_time": 0.5,
             "unknown": 1.0,
         }
 
@@ -702,7 +707,6 @@ class RecommendationService:
             if self.product_store:
                 try:
                     product = self.product_store.get_product(product_id)
-                    logger.info(f"Product metadata for {product_id}: {product}")
                     if product:
                         enriched_candidate.update(
                             {

@@ -108,13 +108,6 @@ def create_content_store() -> ContentStoreInterface:
     store_type = config.CONTENT_STORE_TYPE.lower()
     logger.info(f"Creating content store: {store_type}")
 
-    if store_type == "supabase":
-        from adapters.database.supabase_content_adapter import (
-            get_supabase_content_store,
-        )
-
-        return get_supabase_content_store()
-
     if store_type in ("postgres", "postgresql"):
         from adapters.database.postgres_content_adapter import (
             get_postgres_content_store,

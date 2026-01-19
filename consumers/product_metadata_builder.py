@@ -53,9 +53,18 @@ class ProductMetadataBuilder:
 
     @staticmethod
     def _build_product_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
-        warranty_months = ProductMetadataBuilder._calculate_warranty_months(
-            payload.get("warrantyStartDate"), payload.get("warrantyEndDate")
-        )
+        # Use provided warranty or calculate from dates
+        warranty_val = payload.get("warranty")
+        if warranty_val:
+             # Ensure it's an int, user might send "6" or 6
+             try:
+                 warranty_months = int(warranty_val)
+             except (ValueError, TypeError):
+                 warranty_months = 0
+        else:
+            warranty_months = ProductMetadataBuilder._calculate_warranty_months(
+                payload.get("warrantyStartDate"), payload.get("warrantyEndDate")
+            )
 
         return {
             "product_id": payload.get("id"),
@@ -120,16 +129,20 @@ class ProductMetadataBuilder:
     @staticmethod
     def _extract_storage(variant_name: str) -> str:
         """
-        Extract storage info from variant name: 256GB, 512GB...
+        Extract storage info from variant name: 256GB, 512GB, 256g, 1TB...
         """
         if not variant_name:
             return None
-
+        
+        import re
         variant_name = variant_name.upper()
-        for token in ["64GB", "128GB", "256GB", "512GB", "1TB"]:
-            if token in variant_name:
-                return token
-
+        
+        # Regex for storage: number followed by optional space and G/GB/T/TB
+        # Examples: 256GB, 256 G, 256g, 1TB, 1T
+        match = re.search(r"(\d+)\s*(GB|G|TB|T)\b", variant_name)
+        if match:
+            return match.group(0).replace(" ", "")
+            
         return None
 
     @staticmethod

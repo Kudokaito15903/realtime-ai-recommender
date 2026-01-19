@@ -103,7 +103,7 @@ VECTOR_DIMENSION = int(
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
 
 # Model Configuration
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-base")
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 
 # ================================
@@ -252,7 +252,7 @@ class Config:
 
         # Model configuration
         self.EMBEDDING_MODEL_NAME = os.getenv(
-            "EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"
+            "EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-base"
         )
         self.MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 

@@ -287,7 +287,7 @@ class ProductEventHandler:
             "name": str(raw_metadata["product"].get("name", "")),
             "brand": str(raw_metadata["product"].get("brand", "")),
             "categories": raw_metadata["product"].get("categories", []),
-            "warranty": str(raw_metadata["product"].get("warranty", "")),
+            "warranty": str(raw_metadata["product"].get("warranty_months", 0)),
             "created_at": str(raw_metadata["product"].get("created_at") or ""),
             "updated_at": str(raw_metadata["product"].get("updated_at") or ""),
             "min_price": float(raw_metadata["stats"].get("min_price", 0)),

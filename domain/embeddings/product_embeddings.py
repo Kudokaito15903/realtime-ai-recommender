@@ -183,7 +183,11 @@ class ProductEmbeddingModel:
 
         warranty = product_data.get("warranty")
         if warranty:
-            text_parts.append(f"Bảo hành: {warranty}")
+            warranty_str = str(warranty)
+            if isinstance(warranty, (int, float)) or warranty_str.isdigit():
+                text_parts.append(f"Bảo hành: {warranty_str} tháng")
+            else:
+                text_parts.append(f"Bảo hành: {warranty_str}")
 
         # 4. Key specifications - group by importance
         device_type = self.normalize_device_type(categories)

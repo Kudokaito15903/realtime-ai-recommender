@@ -1,8 +1,3 @@
-"""
-Interaction Features - Offline ML Pipeline
-Feature engineering for ALS training data.
-"""
-
 import math
 import time
 from datetime import datetime, timedelta
@@ -18,19 +13,7 @@ def apply_temporal_weighting(
     timestamp_key: str = "timestamp",
     count_key: str = "count",
 ) -> List[Dict[str, Any]]:
-    """
-    Apply temporal decay weighting to interaction counts.
-    More recent interactions get higher weights.
 
-    Args:
-        interactions: List of interaction dicts
-        half_life_days: Half-life in days for exponential decay
-        timestamp_key: Key for timestamp in interaction dict
-        count_key: Key for count in interaction dict
-
-    Returns:
-        List of interactions with temporally weighted counts
-    """
     if not interactions:
         return []
 
@@ -38,13 +21,11 @@ def apply_temporal_weighting(
     half_life_seconds = half_life_days * 24 * 3600
 
     def parse_timestamp(ts_val: Any) -> float:
-        """Parse timestamp from various formats."""
         if ts_val is None:
-            return now  # Default to current time if missing
+            return now
         if isinstance(ts_val, (int, float)):
             return float(ts_val)
         try:
-            # Try ISO format
             return datetime.fromisoformat(
                 str(ts_val).replace("Z", "+00:00")
             ).timestamp()
@@ -80,20 +61,10 @@ def add_frequency_features(
     interactions: List[Dict[str, Any]],
     count_key: str = "count",
 ) -> List[Dict[str, Any]]:
-    """
-    Add frequency-based features to interactions.
 
-    Args:
-        interactions: List of interaction dicts
-        count_key: Key for count in interaction dict
-
-    Returns:
-        List of interactions with frequency features added
-    """
     if not interactions:
         return []
 
-    # Calculate user and product frequencies
     user_counts: Dict[str, float] = {}
     product_counts: Dict[str, float] = {}
 
@@ -105,7 +76,6 @@ def add_frequency_features(
         user_counts[user_id] = user_counts.get(user_id, 0.0) + count
         product_counts[product_id] = product_counts.get(product_id, 0.0) + count
 
-    # Add frequency features
     enhanced = []
     for interaction in interactions:
         new_interaction = interaction.copy()
@@ -126,17 +96,7 @@ def add_category_features(
     product_store: Optional[Any] = None,
     count_key: str = "count",
 ) -> List[Dict[str, Any]]:
-    """
-    Add category features to interactions from product store.
 
-    Args:
-        interactions: List of interaction dicts
-        product_store: Product store adapter (optional)
-        count_key: Key for count in interaction dict
-
-    Returns:
-        List of interactions with category features added
-    """
     if not interactions or product_store is None:
         return interactions
 
@@ -179,23 +139,10 @@ def apply_interaction_type_weighting(
     type_key: str = "interaction_type",
     count_key: str = "count",
 ) -> List[Dict[str, Any]]:
-    """
-    Apply different weights to different interaction types.
-
-    Args:
-        interactions: List of interaction dicts
-        weights: Dictionary mapping interaction types to weights
-        type_key: Key for interaction type in interaction dict
-        count_key: Key for count in interaction dict
-
-    Returns:
-        List of interactions with type-weighted counts
-    """
     if not interactions:
         return []
 
     if weights is None:
-        # Default weights: purchase > add_to_cart > click > view
         weights = {
             "purchase": 5.0,
             "add_to_cart": 3.0,

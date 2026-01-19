@@ -23,13 +23,7 @@ from config import (
     ALS_ALPHA,
     ALS_TRAINING_INTERACTIONS_LIMIT,
     ALS_REFRESH_SECONDS,
-    SESSION_GAP_SECONDS,
-    SESSION_TRANSITIONS_LIMIT,
-    SESSION_TRANSITIONS_REFRESH_SECONDS,
-    SESSION_RECENT_K,
-    SESSION_TIME_DECAY_HALF_LIFE_DAYS,
-    SESSION_DIVERSITY_LAMBDA,
-    SESSION_POPULARITY_NORMALIZATION,
+
 )
 
 from domain.recommenders.als_recommender import (
@@ -39,11 +33,7 @@ from domain.recommenders.als_recommender import (
     train_implicit_als,
     recommend_for_user as als_recommend_for_user,
 )
-from domain.recommenders.session_recommender import (
-    SessionTransitionStats,
-    build_session_transitions,
-    recommend_next_items,
-)
+
 from domain.recommenders.popularity_recommender import get_popular_recommendations
 from domain.embeddings.product_embeddings import get_embedding_model
 
@@ -68,10 +58,7 @@ class RecommendationService:
             cls._instance._als_cui = None
             cls._instance._als_loaded_at = 0.0
 
-            # Session-transition cache
-            cls._instance._session_lock = threading.Lock()
-            cls._instance._session_stats: Optional[SessionTransitionStats] = None
-            cls._instance._session_loaded_at = 0.0
+
 
             logger.info("Recommendation Service initialized")
 
@@ -486,116 +473,7 @@ class RecommendationService:
     # ---------------------------------------------------------
     # Session-based recommendations (recent interactions)
     # ---------------------------------------------------------
-    def _ensure_session_stats(self) -> None:
 
-        now = time.time()
-        # Fast-path TTL check
-        with self._session_lock:
-            if (
-                self._session_stats is not None
-                and (now - self._session_loaded_at)
-                <= SESSION_TRANSITIONS_REFRESH_SECONDS
-            ):
-                return
-
-        if not hasattr(self.user_behavior, "get_recent_interactions"):
-            logger.warning(
-                "Behavior store does not support recent interactions; "
-                "session-based recommender unavailable"
-            )
-            return
-
-        interactions = self.user_behavior.get_recent_interactions(
-            limit=SESSION_TRANSITIONS_LIMIT,
-            offset=0,
-        )
-        if not interactions:
-            logger.warning("No recent interactions available for session transitions")
-            return
-
-        try:
-            stats = build_session_transitions(
-                interactions=interactions,
-                session_gap_seconds=SESSION_GAP_SECONDS,
-                product_store=self.product_store,
-            )
-        except Exception:
-            logger.exception("Failed to build session transition statistics")
-            return
-
-        with self._session_lock:
-            self._session_stats = stats
-            self._session_loaded_at = now
-
-    def get_session_based_recommendations(
-        self,
-        user_id: str,
-        limit: int = 10,
-        recent_k: int = SESSION_RECENT_K,
-    ) -> List[Dict[str, Any]]:
-        """
-        Recommend next items based purely on the user's current session context.
-
-        Logic:
-        1. Get recent interactions (session context)
-        2. Use item -> next-item transitions
-        3. Apply recency + time decay
-        4. Fallback to popularity
-        """
-        if not user_id or limit <= 0:
-            return []
-
-        # Step 1: fetch recent session interactions
-        history = self.user_behavior.get_user_history(
-            user_id=user_id,
-            limit=max(2, recent_k),
-        )
-        if not history:
-            return self.get_popular_in_category(category=None, limit=limit)
-
-        # Extract recent product_ids (most recent LAST)
-        recent_ids: List[str] = [
-            str(x.get("product_id")) for x in history if x.get("product_id") is not None
-        ][:recent_k]
-
-        if len(recent_ids) < 1:
-            return self.get_popular_in_category(category=None, limit=limit)
-
-        # Step 2: ensure session stats
-        self._ensure_session_stats()
-        with self._session_lock:
-            stats = self._session_stats
-
-        if stats is None:
-            # Session recommender unavailable → popularity fallback
-            return self.get_popular_in_category(category=None, limit=limit)
-
-        # Optional hints for popularity fallback
-        last_event = history[0]
-        category_hint = last_event.get("category")
-        brand_hint = last_event.get("brand") or last_event.get("brandName")
-
-        # Step 3: pure session-based recommendation
-        ranked = recommend_next_items(
-            stats=stats,
-            current_session_items=recent_ids,
-            limit=limit,
-            time_decay_half_life_days=SESSION_TIME_DECAY_HALF_LIFE_DAYS,
-            category_hint=category_hint,
-            brand_hint=brand_hint,
-        )
-
-        if not ranked:
-            return self.get_popular_in_category(category=category_hint, limit=limit)
-
-        return [
-            {
-                "product_id": pid,
-                "score": float(score),
-                "recommendation_type": "session",
-            }
-            for pid, score in ranked
-        ]
 
     # ---------------------------------------------------------
     # Hybrid: combine multiple strategies
@@ -632,15 +510,7 @@ class RecommendationService:
         except Exception as e:
             logger.warning(f"ALS recommendations failed: {e}")
 
-        # 3. Call session recommender
-        # try:
-        #     session_recs = self.get_session_based_recommendations(
-        #         user_id=user_id, limit=max(limit, 20)
-        #     )
-        #     candidates.extend(session_recs)
-        #     logger.debug(f"Session recommender returned {len(session_recs)} candidates")
-        # except Exception as e:
-        #     logger.warning(f"Session recommendations failed: {e}")
+
 
         # 4. Call embedding recommender
         try:
@@ -768,13 +638,12 @@ class RecommendationService:
         """
         from config import (
             HYBRID_WEIGHT_ALS,
-            HYBRID_WEIGHT_SESSION,
             HYBRID_WEIGHT_VECTOR,
         )
 
         weights = {
             "als": HYBRID_WEIGHT_ALS,
-            "session": HYBRID_WEIGHT_SESSION,
+
             "recency_weighted": HYBRID_WEIGHT_VECTOR,
             "similar": HYBRID_WEIGHT_VECTOR,
             "search": HYBRID_WEIGHT_VECTOR,

@@ -18,12 +18,6 @@ from domain.embeddings.product_embeddings import get_embedding_model
 
 
 class ContentEventHandler:
-    """
-    Kafka Content Event Consumer
-    - Consume content events
-    - Build content embeddings
-    - Upsert / delete vector store
-    """
 
     def __init__(self, worker_name: str = "content-vector"):
         self.worker_name = worker_name

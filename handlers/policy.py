@@ -11,23 +11,7 @@ from utils.formatters import format_policy_response
 
 
 class PolicyHandler:
-    """
-    Handle policy intent queries.
 
-    Policy types:
-    - warranty: Chính sách bảo hành
-    - return: Chính sách đổi trả
-    - shipping: Chính sách giao hàng
-    - payment: Phương thức thanh toán
-
-    Examples:
-    - "Chính sách bảo hành như thế nào?"
-    - "Đổi trả trong bao lâu?"
-    - "Có giao hàng miễn phí không?"
-    - "Thanh toán qua thẻ được không?"
-    """
-
-    # Policy type detection keywords
     POLICY_KEYWORDS = {
         "warranty": [
             "bảo hành",
@@ -81,17 +65,7 @@ class PolicyHandler:
         conversation_history: Optional[List[Dict]] = None,
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Handle policy query.
 
-        Args:
-            query: User query
-            conversation_history: Previous messages
-            context: Additional context
-
-        Returns:
-            Response dict
-        """
         logger.info(f"Handling policy: {query[:50]}...")
 
         # Step 1: Detect policy type
@@ -124,15 +98,9 @@ class PolicyHandler:
         return formatted_response
 
     def _detect_policy_type(self, query: str) -> Optional[str]:
-        """
-        Detect policy type from query keywords.
 
-        Returns:
-            Policy type or None
-        """
         query_lower = query.lower()
 
-        # Score each policy type
         scores = {}
         for policy_type, keywords in self.POLICY_KEYWORDS.items():
             score = sum(1 for keyword in keywords if keyword in query_lower)
@@ -142,13 +110,10 @@ class PolicyHandler:
         if not scores:
             return None
 
-        # Return policy type with highest score
         return max(scores, key=scores.get)
 
     def _no_policy_response(self, query: str) -> Dict[str, Any]:
-        """
-        Response when no policy found.
-        """
+
         return {
             "type": "policy",
             "message": """Xin lỗi, tôi không tìm thấy chính sách liên quan đến câu hỏi của bạn.

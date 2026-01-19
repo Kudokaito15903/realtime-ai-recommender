@@ -1,26 +1,13 @@
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-# ================================
-# BACKEND SELECTION CONFIGURATION
-# ================================
-
-# Backend type selection: 'redis', 'cloud', 'hybrid'
-# Default to hybrid stack: Pinecone (vector store) + Postgres (events/data) + Redis (legacy/caching)
 BACKEND_TYPE = os.getenv("BACKEND_TYPE", "hybrid")
-
-# Component-specific backend selection
-VECTOR_STORE_TYPE = os.getenv(
-    "VECTOR_STORE_TYPE", "pinecone"
-)  # redis, pinecone, qdrant, chroma
+VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "pinecone")
 
 EVENT_PROCESSOR_TYPE = "kafka"
-DATA_STORE_TYPE = os.getenv(
-    "DATA_STORE_TYPE", "postgres"
-)  # redis, supabase, postgresql, sqlite
+DATA_STORE_TYPE = os.getenv("DATA_STORE_TYPE", "postgres")
 BEHAVIOR_STORE_TYPE = os.getenv("BEHAVIOR_STORE_TYPE", "postgres")
 
 # Kafka Configuration
@@ -35,26 +22,10 @@ KAFKA_CONTENT_GROUP_ID = os.getenv(
 )
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recommender-group")
 
-# ================================
-# CLOUD SERVICES CONFIGURATION
-# ================================
-
 # Pinecone Configuration
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "product-recommendations")
-
-# Elasticsearch Configuration
-ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
-ELASTICSEARCH_API_KEY = os.getenv("ELASTICSEARCH_API_KEY")
-ELASTICSEARCH_INDEX_NAME = os.getenv(
-    "ELASTICSEARCH_INDEX_NAME", "product-recommendations"
-)
-
-# Supabase Configuration (optional, kept for backward compatibility)
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 # PostgreSQL Configuration (self-hosted)
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
@@ -70,15 +41,8 @@ MONGODB_DB = os.getenv("MONGODB_DB", "realtime_ai")
 MONGODB_USER = os.getenv("MONGODB_USER", None)
 MONGODB_PASSWORD = os.getenv("MONGODB_PASSWORD", None)
 MONGODB_AUTH_SOURCE = os.getenv("MONGODB_AUTH_SOURCE", "admin")
-MONGODB_URI = os.getenv(
-    "MONGODB_URI", None
-)  # Full connection string (overrides individual settings)
+MONGODB_URI = os.getenv("MONGODB_URI", None)
 
-# ================================
-# LEGACY REDIS CONFIGURATION
-# ================================
-
-# Redis Configuration (for fallback or hybrid mode)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
@@ -89,28 +53,13 @@ PRODUCT_STREAM_KEY = os.getenv("PRODUCT_STREAM_KEY", "product:updates")
 PRODUCT_STREAM_GROUP = os.getenv("PRODUCT_STREAM_GROUP", "product-processors")
 PRODUCT_STREAM_CONSUMER = os.getenv("PRODUCT_STREAM_CONSUMER", "worker-{}")
 
-# Vector Store Configuration (Redis)
 VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "product:vectors")
 
-# ================================
-# SHARED CONFIGURATION
-# ================================
-
-# Vector Configuration
-VECTOR_DIMENSION = int(
-    os.getenv("VECTOR_DIMENSION", 768)
-)  # Dimension from intfloat/multilingual-e5-base
+VECTOR_DIMENSION = int(os.getenv("VECTOR_DIMENSION", 768))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.75))
-
-# Model Configuration
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
 MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "./model_cache")
 
-# ================================
-# RECOMMENDER CONFIGURATION (ALS / Session)
-# ================================
-
-# ALS (implicit feedback) settings
 ALS_MODEL_PATH = os.getenv(
     "ALS_MODEL_PATH", os.path.join(MODEL_CACHE_DIR, "als_model.npz")
 )
@@ -121,9 +70,8 @@ ALS_ALPHA = float(os.getenv("ALS_ALPHA", 40.0))
 ALS_TRAINING_INTERACTIONS_LIMIT = int(
     os.getenv("ALS_TRAINING_INTERACTIONS_LIMIT", 50000)
 )
-ALS_REFRESH_SECONDS = int(os.getenv("ALS_REFRESH_SECONDS", 24 * 3600))  # 24h
+ALS_REFRESH_SECONDS = int(os.getenv("ALS_REFRESH_SECONDS", 24 * 3600))
 
-# ALS Data Quality Settings
 ALS_DATA_QUALITY_ENABLED = (
     os.getenv("ALS_DATA_QUALITY_ENABLED", "True").lower() == "true"
 )
@@ -136,54 +84,20 @@ ALS_REMOVE_COLD_START = os.getenv("ALS_REMOVE_COLD_START", "True").lower() == "t
 ALS_MIN_USER_INTERACTIONS = int(os.getenv("ALS_MIN_USER_INTERACTIONS", "2"))
 ALS_MIN_PRODUCT_INTERACTIONS = int(os.getenv("ALS_MIN_PRODUCT_INTERACTIONS", "2"))
 
-# ALS Normalization Settings
-ALS_NORMALIZATION_METHOD = os.getenv(
-    "ALS_NORMALIZATION_METHOD", "none"
-)  # none, log, minmax, zscore, sqrt
+ALS_NORMALIZATION_METHOD = os.getenv("ALS_NORMALIZATION_METHOD", "none")
 
-# ALS Feature Engineering Settings
 ALS_TEMPORAL_WEIGHTING_ENABLED = (
     os.getenv("ALS_TEMPORAL_WEIGHTING_ENABLED", "False").lower() == "true"
 )
 ALS_RECENCY_HALF_LIFE_DAYS = float(os.getenv("ALS_RECENCY_HALF_LIFE_DAYS", "30.0"))
 
-# Session-based recommendations
-SESSION_GAP_SECONDS = int(os.getenv("SESSION_GAP_SECONDS", 30 * 60))  # 30 minutes
-SESSION_TRANSITIONS_LIMIT = int(os.getenv("SESSION_TRANSITIONS_LIMIT", 20000))
-SESSION_TRANSITIONS_REFRESH_SECONDS = int(
-    os.getenv("SESSION_TRANSITIONS_REFRESH_SECONDS", 5 * 60)
-)  # 5m
-SESSION_RECENT_K = int(os.getenv("SESSION_RECENT_K", 5))
-# Enhanced session recommendation parameters
-SESSION_TIME_DECAY_HALF_LIFE_DAYS = float(
-    os.getenv("SESSION_TIME_DECAY_HALF_LIFE_DAYS", 7.0)
-)  # 7 days (was 30) - faster decay for trends
-SESSION_HISTORY_DECAY = float(
-    os.getenv("SESSION_HISTORY_DECAY", 0.7)
-)  # Weight decay for position in history (recency)
-SESSION_DIVERSITY_LAMBDA = float(
-    os.getenv("SESSION_DIVERSITY_LAMBDA", 0.3)
-)  # Diversity penalty weight
-SESSION_POPULARITY_NORMALIZATION = (
-    os.getenv("SESSION_POPULARITY_NORMALIZATION", "True").lower() == "true"
-)
-
-# API Configuration
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", 8000))
 DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
 
-# Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
-OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
 
-# ================================
-# HYBRID RECOMMENDER WEIGHTS
-# ================================
 HYBRID_WEIGHT_ALS = float(os.getenv("HYBRID_WEIGHT_ALS", 1.0))
-HYBRID_WEIGHT_SESSION = float(os.getenv("HYBRID_WEIGHT_SESSION", 1.0))
 HYBRID_WEIGHT_VECTOR = float(os.getenv("HYBRID_WEIGHT_VECTOR", 1.0))
 
 # Chatbot
@@ -197,16 +111,8 @@ OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://openrouter.ai/api/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash-exp")
 
-# Content store
 CONTENT_STORE_TYPE = os.getenv("CONTENT_STORE_TYPE", "supabase")
 
-# Brand & Fine-tuning
-BRAND_PERSONALITY = os.getenv(
-    "BRAND_PERSONALITY",
-    "Bạn là một trợ lý ảo nhiệt tình, am hiểu công nghệ và luôn sẵn sàng giúp đỡ. "
-    "Hãy sử dụng ngôn ngữ trẻ trung, năng động nhưng vẫn giữ sự chuyên nghiệp. "
-    "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'.",
-)
 COLLECT_FINE_TUNING_DATA = (
     os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
 )
@@ -260,25 +166,11 @@ class Config:
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
         self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
-        # Logging
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
 
-        # Chatbot Configuration
-        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", OPENAI_API_KEY)
-        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL)
-        self.OPENAI_API_URL = os.getenv("OPENAI_API_URL", OPENAI_API_URL)
-
-        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", GOOGLE_API_KEY)
-        self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", GOOGLE_MODEL)
-
-        # Brand & Fine-tuning
-        self.BRAND_PERSONALITY = os.getenv(
-            "BRAND_PERSONALITY",
-            "Bạn là một trợ lý ảo nhiệt tình, am hiểu công nghệ và luôn sẵn sàng giúp đỡ. "
-            "Hãy sử dụng ngôn ngữ trẻ trung, năng động nhưng vẫn giữ sự chuyên nghiệp. "
-            "Luôn xưng hô là 'mình' hoặc 'Chatbot' và gọi khách hàng là 'bạn'.",
-        )
+        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+        self.GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash-exp")
         self.COLLECT_FINE_TUNING_DATA = (
             os.getenv("COLLECT_FINE_TUNING_DATA", "True").lower() == "true"
         )

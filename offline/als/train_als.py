@@ -55,19 +55,7 @@ def train_als_offline(
     output_path: Optional[str] = None,
     enable_feature_engineering: bool = True,
 ) -> None:
-    """
-    Offline training entrypoint for the implicit ALS model.
 
-    Typical usage:
-    - Run once per day (e.g. 2AM) from a scheduler/cron.
-    - Reads aggregated interaction counts from the behavior store.
-    - Trains ALS and saves the model artifact.
-
-    Args:
-        interactions_limit: Maximum number of interactions to use
-        output_path: Optional custom output path for model
-        enable_feature_engineering: Whether to apply feature engineering
-    """
     behavior = get_user_behavior()
 
     if not hasattr(behavior, "get_interaction_counts"):
@@ -196,8 +184,3 @@ if __name__ == "__main__":
         enable_feature_engineering=not args.no_features,
     )
 
-    # Example scheduler (cron) usage on Linux:
-    #   0 2 * * * /usr/bin/python -m offline.als.train_als >> /var/log/als_trainer.log 2>&1
-    #
-    # On Windows Task Scheduler, configure a daily task at 2AM that runs:
-    #   python -m offline.als.train_als

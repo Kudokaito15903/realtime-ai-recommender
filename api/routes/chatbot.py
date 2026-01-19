@@ -4,7 +4,6 @@ from typing import Optional, Dict, Any
 from loguru import logger
 
 # Import both old and new chatbot services
-from services.chatbot_service import ChatbotService
 from domain.chatbot.chatbot import ChatbotOrchestrator
 import time
 
@@ -27,44 +26,9 @@ class ChatRequestV2(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
-# Legacy endpoint (using old ChatbotService)
-@router.post("/chat")
-async def chat(req: ChatRequest):
-    """Legacy chatbot endpoint - using ChatbotService"""
-    try:
-        svc = ChatbotService()
-        answer, contexts, intent = svc.answer(
-            req.query, top_k=req.top_k, session_id=req.session_id or f"eval_session_{int(time.time())}"
-        )
-
-        return {
-            "answer": answer,
-            "contexts": contexts,
-            "intent": intent,
-            "capabilities": {
-                "product_info": "Trả lời về thông tin sản phẩm",
-                "compare": "So sánh sản phẩm",
-                "policy": "Thông tin chính sách",
-                "cskh": "Chăm sóc khách hàng tự động",
-            },
-        }
-    except Exception as e:
-        logger.error(f"Error in legacy chat endpoint: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# New endpoint (using ChatbotOrchestrator)
 @router.post("/chat/v2")
 async def chat_v2(req: ChatRequestV2):
-    """
-    New chatbot endpoint using ChatbotOrchestrator.
-    
-    Features:
-    - Intent classification
-    - RAG retrieval from vector database
-    - Context-aware responses
-    - Conversation history management
-    """
+
     try:
         chatbot = ChatbotOrchestrator()
         

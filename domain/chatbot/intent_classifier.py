@@ -1,7 +1,3 @@
-"""
-Intent Classification Service
-"""
-
 from typing import Tuple, List, Dict, Any
 from loguru import logger
 import re
@@ -14,16 +10,6 @@ except ImportError:
 
 
 class IntentClassifier:
-    """
-    Classify user intent using LLM or rule-based approach.
-
-    Intents:
-    - product_info: Questions about product specs, features
-    - compare: Compare multiple products
-    - policy: Questions about policies (warranty, return, shipping, payment)
-    - cskh: Customer support (order tracking, account management)
-    - general: Greetings, chitchat, unclear intent
-    """
 
     INTENTS = {
         "product_info": {
@@ -142,7 +128,6 @@ class IntentClassifier:
     }
 
     def __init__(self):
-        # Initialize GenAI if available
         self.genai_model = None
         if genai:
             try:
@@ -155,55 +140,32 @@ class IntentClassifier:
             except Exception as e:
                 logger.warning(f"Failed to initialize GenAI: {e}")
         
-        # Simple in-memory cache (can be replaced with Redis later)
         self._cache = {}
 
     async def classify(
         self, message: str, conversation_history: List[Dict[str, str]] = None
     ) -> Tuple[str, float]:
-        """
-        Classify intent of user message.
-
-        Args:
-            message: User message
-            conversation_history: Previous messages for context
-
-        Returns:
-            Tuple of (intent, confidence_score)
-        """
-        # Check cache first
         cache_key = f"intent:{message.lower()[:100]}"
         if cache_key in self._cache:
             cached = self._cache[cache_key]
             logger.debug(f"Intent cache hit: {cached}")
             return cached["intent"], cached["confidence"]
 
-        # Try rule-based classification first (fast)
         intent, confidence = self._rule_based_classify(message)
 
         if confidence >= 0.8:
-            # High confidence from rules, use it
             self._cache[cache_key] = {"intent": intent, "confidence": confidence}
             return intent, confidence
 
-        # Low confidence, use LLM classification
         intent, confidence = await self._llm_classify(message, conversation_history)
 
-        # Cache result
         self._cache[cache_key] = {"intent": intent, "confidence": confidence}
 
         return intent, confidence
 
     def _rule_based_classify(self, message: str) -> Tuple[str, float]:
-        """
-        Fast rule-based classification using keywords.
-
-        Returns:
-            Tuple of (intent, confidence_score)
-        """
         message_lower = message.lower()
 
-        # Score each intent
         scores = {}
         for intent, config in self.INTENTS.items():
             score = 0
@@ -211,7 +173,15 @@ class IntentClassifier:
 
             for keyword in keywords:
                 if keyword in message_lower:
-                    # Weight longer keywords higher
+                    score += len(keyword.split())
+        message_lower = message.lower()
+        scores = {}
+        for intent, config in self.INTENTS.items():
+            score = 0
+            keywords = config["keywords"]
+
+            for keyword in keywords:
+                if keyword in message_lower:
                     score += len(keyword.split())
 
             if score > 0:
@@ -220,16 +190,11 @@ class IntentClassifier:
         if not scores:
             return "general", 0.3
 
-        # Get intent with highest score
         best_intent = max(scores, key=scores.get)
         max_score = scores[best_intent]
 
-        # Normalize confidence (heuristic)
         total_score = sum(scores.values())
         confidence = max_score / total_score if total_score > 0 else 0.5
-
-        # Boost confidence for clear patterns
-
 
         if self._has_comparison_pattern(message_lower):
             if best_intent == "compare":
@@ -300,13 +265,7 @@ class IntentClassifier:
     async def _llm_classify(
         self, message: str, conversation_history: List[Dict[str, str]] = None
     ) -> Tuple[str, float]:
-        """
-        Use LLM to classify intent.
 
-        Returns:
-            Tuple of (intent, confidence_score)
-        """
-        # Build context from history
         context_text = ""
         if conversation_history:
             recent = conversation_history[-3:]  # Last 3 messages
@@ -314,7 +273,6 @@ class IntentClassifier:
                 [f"{msg['role']}: {msg['content']}" for msg in recent]
             )
 
-        # Build prompt
         intent_descriptions = "\n".join(
             [
                 f"{i+1}. {intent}: {config['description']}"
@@ -351,11 +309,9 @@ Chỉ trả lời JSON, không thêm text nào khác."""
 
 {prompt}"""
             
-            # GenAI synchronous call (can be wrapped in asyncio if needed)
             import asyncio
             loop = asyncio.get_event_loop()
             
-            # Configure safety settings to avoid blocking harmless content
             safety_settings = [
                 {
                     "category": "HARM_CATEGORY_HARASSMENT",
@@ -387,14 +343,12 @@ Chỉ trả lời JSON, không thêm text nào khác."""
                 )
             )
             
-            # Check if response was blocked or empty
             if not response_obj.parts:
                  logger.warning(f"LLM returned no parts. Finish reason: {response_obj.finish_reason}")
                  return self._rule_based_classify(message)
 
             response = response_obj.text
 
-            # Clean Markdown code blocks if present
             response = response.strip()
             if response.startswith("```json"):
                 response = response[7:]
@@ -405,7 +359,6 @@ Chỉ trả lời JSON, không thêm text nào khác."""
             
             response = response.strip()
 
-            # Parse JSON response
             import json
 
             result = json.loads(response)
@@ -414,7 +367,6 @@ Chỉ trả lời JSON, không thêm text nào khác."""
             confidence = float(result.get("confidence", 0.5))
             reasoning = result.get("reasoning", "")
 
-            # Validate intent
             if intent not in self.INTENTS:
                 logger.warning(
                     f"Invalid intent from LLM: {intent}, defaulting to general"
@@ -432,5 +384,4 @@ Chỉ trả lời JSON, không thêm text nào khác."""
 
         except Exception as e:
             logger.error(f"LLM classification failed: {e}")
-            # Fallback to rule-based on error
             return self._rule_based_classify(message)

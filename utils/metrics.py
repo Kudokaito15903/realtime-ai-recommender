@@ -72,7 +72,7 @@ def log_recommendation_event(
     Structured log for recommendation calls to support basic metrics/monitoring.
 
     event_type: e.g. "personalized_recommendation"
-    method: "hybrid" | "als" | "session" | "vector"
+    method: "hybrid" | "als" | "vector"
     variant: A/B variant name (e.g. "A"/"B") or "control"
     """
     payload = {

@@ -1,8 +1,3 @@
-"""
-Product Event Handler - IMPROVED VERSION
-Fixes: Metadata schema, validation, performance, consistency
-"""
-
 import os
 import time
 import signal
@@ -345,9 +340,7 @@ class ProductEventHandler:
             logger.warning(
                 f"Vector delete failed or not found for product {product_id}"
             )
-            # Continue to try deleting chunks anyway
 
-        # 2. Delete RAG chunks (best effort)
         chunk_types = [
             "overview",
             "technical",

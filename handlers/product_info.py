@@ -13,15 +13,6 @@ from adapters.factory import get_product_store
 
 
 class ProductInfoHandler:
-    """
-    Handle product information queries.
-    
-    Examples:
-    - "iPhone 17 Pro có những tính năng gì?"
-    - "Cho tôi biết về laptop Dell XPS"
-    - "Máy này pin trâu không?"
-    - "Cấu hình như thế nào?"
-    """
 
     def __init__(self):
         self.rag_engine = RAGEngine()

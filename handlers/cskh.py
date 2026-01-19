@@ -12,22 +12,6 @@ from utils.formatters import format_cskh_response
 
 
 class CSKHHandler:
-    """
-    Handle customer support queries.
-
-    CSKH topics:
-    - order_tracking: Kiểm tra đơn hàng
-    - account_management: Quản lý tài khoản (quên mật khẩu, đổi thông tin)
-    - order_cancellation: Hủy đơn hàng
-    - contact_support: Liên hệ hỗ trợ
-    - address_management: Quản lý địa chỉ
-
-    Examples:
-    - "Làm sao kiểm tra đơn hàng?"
-    - "Tôi quên mật khẩu"
-    - "Cập nhật địa chỉ giao hàng"
-    - "Hủy đơn hàng #12345"
-    """
 
     TOPIC_KEYWORDS = {
         "order_tracking": [
@@ -199,15 +183,10 @@ class CSKHHandler:
         return None
 
     async def _handle_order_tracking(self, order_id: str) -> Dict[str, Any]:
-        """
-        Handle order tracking query with API.
-        """
+
         try:
-            # TODO: Implement order service integration
-            # For now, return a placeholder response
-            order = None  # await self.order_service.get_order(order_id)
+            order = None  
             
-            # If order service not available, return helpful message
             if order is None:
                 return {
                     "type": "cskh",

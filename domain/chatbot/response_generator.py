@@ -14,15 +14,6 @@ import config
 
 
 class ResponseGenerator:
-    """
-    Generate natural language responses using LLM.
-    
-    Supports different response types:
-    - product_info: Product information responses
-    - policy: Policy explanations
-    - cskh: Customer support responses
-    - compare: Product comparison responses
-    """
 
     def __init__(self):
         self.genai_model = None
@@ -43,18 +34,7 @@ class ResponseGenerator:
         context: str,
         conversation_history: Optional[List[Dict]] = None,
     ) -> str:
-        """
-        Generate product information response.
-        
-        Args:
-            query: User query
-            context: Retrieved context from RAG
-            conversation_history: Previous conversation messages
-            
-        Returns:
-            Generated response text
-        """
-        # Validate context is not empty
+
         if not context or not context.strip():
             logger.warning(f"Empty context for product query: {query[:50]}...")
             return f"Xin lỗi, tôi không tìm thấy thông tin về '{query}' trong dữ liệu hiện có. Vui lòng thử lại với tên sản phẩm cụ thể hơn hoặc liên hệ bộ phận hỗ trợ."
@@ -89,10 +69,7 @@ CÁCH TRẢ LỜI:
         context: str,
         conversation_history: Optional[List[Dict]] = None,
     ) -> str:
-        """
-        Generate policy explanation response.
-        """
-        # Validate context is not empty
+
         if not context or not context.strip():
             logger.warning(f"Empty context for policy query: {query[:50]}...")
             return f"Xin lỗi, tôi không tìm thấy thông tin về '{query}' trong chính sách hiện tại. Vui lòng liên hệ bộ phận hỗ trợ để được giải đáp chi tiết."
@@ -122,10 +99,7 @@ QUY TẮC NGHIÊM NGẶT:
         context: str,
         conversation_history: Optional[List[Dict]] = None,
     ) -> str:
-        """
-        Generate customer support response.
-        """
-        # Validate context is not empty
+
         if not context or not context.strip():
             logger.warning(f"Empty context for CSKH query: {query[:50]}...")
             return f"Xin lỗi, tôi không tìm thấy thông tin về '{query}' trong dữ liệu hỗ trợ hiện có. Vui lòng liên hệ bộ phận hỗ trợ khách hàng để được giúp đỡ."
@@ -154,10 +128,7 @@ QUY TẮC NGHIÊM NGẶT:
         context: str,
         conversation_history: Optional[List[Dict]] = None,
     ) -> str:
-        """
-        Generate product comparison response.
-        """
-        # Validate context is not empty
+
         if not context or not context.strip():
             logger.warning(f"Empty context for comparison query: {query[:50]}...")
             return f"Xin lỗi, tôi không tìm thấy đủ thông tin để so sánh các sản phẩm trong câu hỏi của bạn. Vui lòng thử lại với tên sản phẩm cụ thể hơn."
@@ -187,10 +158,8 @@ QUY TẮC NGHIÊM NGẶT:
         system_prompt: str,
         conversation_history: Optional[List[Dict]] = None,
     ) -> str:
-        """Build prompt from query, context, and history."""
         parts = [system_prompt]
         
-        # Add strict instruction about context usage
         parts.append("\n⚠️ LƯU Ý QUAN TRỌNG:")
         parts.append("- Bạn CHỈ được sử dụng thông tin trong phần CONTEXT bên dưới")
         parts.append("- Nếu CONTEXT trống hoặc không có thông tin liên quan, bạn PHẢI nói rõ điều đó")
@@ -216,37 +185,30 @@ QUY TẮC NGHIÊM NGẶT:
         return "\n".join(parts)
 
     async def _generate(self, prompt: str) -> str:
-        """Generate response using LLM."""
         if not self.genai_model:
-            # Fallback: Generate response from context if available
             logger.warning("GenAI model not available, using context-based fallback")
             return self._generate_fallback_from_context(prompt)
         
         try:
-            # Use lower temperature to reduce hallucination
-            # Temperature 0.1-0.3 is better for factual, context-based responses
+
             response_obj = self.genai_model.generate_content(
                 prompt,
                 generation_config={
-                    "temperature": 0.1,  # Reduced from 0.7 to minimize hallucination
+                    "temperature": 0.1,
                     "max_output_tokens": 1500,
-                    "top_p": 0.8,  # Nucleus sampling for more focused responses
+                    "top_p": 0.8,
                 }
             )
             response_text = response_obj.text.strip()
             
-            # Log response for debugging
             logger.debug(f"Generated response: {response_text[:200]}...")
             
             return response_text
         except Exception as e:
             logger.error(f"Error generating response: {e}", exc_info=True)
-            # Try fallback even on error
             return self._generate_fallback_from_context(prompt)
     
     def _generate_fallback_from_context(self, prompt: str) -> str:
-        """Generate fallback response from context when LLM is not available."""
-        # Extract context and query from prompt
         lines = prompt.split("\n")
         context = ""
         query = ""
@@ -282,34 +244,26 @@ QUY TẮC NGHIÊM NGẶT:
         context = context.strip()
         query = query.strip()
         
-        # If we have context, use it to generate a response
         if context:
-            # Clean up context (remove source markers if needed)
             context_clean = context.replace("[Nguồn", "").replace("]", "")
             context_lines = [l.strip() for l in context_clean.split("\n") if l.strip()]
             
-            # Determine response type from system prompt
             is_policy = "chính sách" in system_prompt.lower() or "policy" in system_prompt.lower()
             is_product = "sản phẩm" in system_prompt.lower() or "product" in system_prompt.lower()
             is_cskh = "hỗ trợ" in system_prompt.lower() or "support" in system_prompt.lower()
             is_compare = "so sánh" in system_prompt.lower() or "compare" in system_prompt.lower()
             
-            # Build response based on type and query
-            # First, extract meaningful content from context
+          
             meaningful_lines = [l for l in context_lines if l and len(l.strip()) > 15]
             
             if not meaningful_lines:
-                # If no meaningful content, be explicit about not having information
+                
                 if context_lines:
-                    # Return only what's in context, don't make up information
                     return "Tôi tìm thấy một số thông tin trong dữ liệu:\n\n" + "\n".join(context_lines[:5]) + "\n\nLưu ý: Thông tin trên là tất cả những gì tôi có trong dữ liệu. Nếu bạn cần thông tin chi tiết hơn, vui lòng liên hệ bộ phận hỗ trợ."
                 return "Xin lỗi, tôi không tìm thấy thông tin chi tiết về câu hỏi này trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ."
             
-            # Build response that directly answers the query
             if is_policy:
-                # Policy response: Answer the specific question
                 if query:
-                    # Try to answer the question directly
                     response = f"Về câu hỏi '{query}', "
                     if "bảo hành" in query.lower() or "warranty" in query.lower():
                         response += "chính sách bảo hành của chúng tôi như sau:\n\n"
@@ -324,14 +278,11 @@ QUY TẮC NGHIÊM NGẶT:
                 else:
                     response = "Chính sách của chúng tôi:\n\n"
                 
-                # Add context content
                 for line in meaningful_lines[:12]:
                     response += f"{line}\n"
                     
             elif is_product:
-                # Product response: Answer about the product
                 if query:
-                    # Extract product name if mentioned
                     product_keywords = ["iphone", "samsung", "laptop", "dell", "xps", "máy", "sản phẩm"]
                     product_mentioned = any(kw in query.lower() for kw in product_keywords)
                     
@@ -342,18 +293,15 @@ QUY TẮC NGHIÊM NGẶT:
                 else:
                     response = "Thông tin sản phẩm:\n\n"
                 
-                # Add context content
                 for line in meaningful_lines[:10]:
                     response += f"{line}\n"
                     
             elif is_compare:
-                # Comparison response
                 response = "So sánh các sản phẩm:\n\n"
                 for line in meaningful_lines[:12]:
                     response += f"{line}\n"
                     
             elif is_cskh:
-                # CSKH response
                 if query:
                     if "đơn hàng" in query.lower() or "order" in query.lower() or "tracking" in query.lower():
                         response = "Để kiểm tra đơn hàng:\n\n"
@@ -367,7 +315,6 @@ QUY TẮC NGHIÊM NGẶT:
                 for line in meaningful_lines[:10]:
                     response += f"{line}\n"
             else:
-                # General response
                 if query:
                     response = f"Về câu hỏi '{query}':\n\n"
                 else:
@@ -376,16 +323,14 @@ QUY TẮC NGHIÊM NGẶT:
                 for line in meaningful_lines[:15]:
                     response += f"- {line}\n"
             
-            # Clean up response
             response = response.strip()
             
-            # Ensure response ends properly
             if response and not response.endswith(".") and not response.endswith("?") and not response.endswith(":"):
                 response += "."
             
             return response
         
-        # No context available - be explicit about not having information
+        # No context availabe - be explicit about not having information
         if query:
             return f"Xin lỗi, tôi không tìm thấy thông tin về '{query}' trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ để được giúp đỡ."
         return "Xin lỗi, tôi không tìm thấy thông tin phù hợp để trả lời câu hỏi này trong dữ liệu hiện có. Vui lòng thử lại với câu hỏi cụ thể hơn hoặc liên hệ bộ phận hỗ trợ."

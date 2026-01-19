@@ -1,9 +1,7 @@
-# FastAPI và web server dependencies
 fastapi[standard]
 uvicorn[standard]
 starlette
 
-# Redis và vector search dependencies
 redis
 sentence-transformers
 torch
@@ -11,7 +9,6 @@ psycopg2-binary
 pymongo
 kafka-python
 beautifulsoup4
-# Machine Learning và embedding dependencies
 numpy
 scipy
 pinecone-client>=3.0.0
@@ -20,21 +17,13 @@ supabase
 implicit
 scikit-learn
 
-# Data handling và validation
 pydantic
 pandas
 
-# Configuration và environment
 python-dotenv
 
-# Logging và monitoring
 loguru
 
-# Optional: For better embeddings (bỏ comment nếu cần)
-# sentence-transformers
-# transformers
-# torch
 
-# Development và type checking
 typing-extensions
 google-genai

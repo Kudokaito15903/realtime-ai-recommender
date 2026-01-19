@@ -11,9 +11,7 @@ from offline.als.train_als import train_als_offline
 
 
 def run_scheduler():
-    """
-    Simple scheduler to run ALS training daily at 2:00 AM.
-    """
+
     logger.info("ALS Training Scheduler started")
 
     while True:
@@ -43,7 +41,6 @@ def run_scheduler():
         except Exception as e:
             logger.error(f"Scheduled ALS training failed: {e}")
 
-        # Sleep a bit to avoid double execution if clock skews (though next loop handles it)
         time.sleep(60)
 
 

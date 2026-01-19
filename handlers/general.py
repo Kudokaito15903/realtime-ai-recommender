@@ -7,14 +7,6 @@ from loguru import logger
 
 
 class GeneralHandler:
-    """
-    Handle general queries (greetings, chitchat, unclear intent).
-    
-    Examples:
-    - "Xin chào"
-    - "Cảm ơn bạn"
-    - "Tạm biệt"
-    """
 
     GREETINGS_RESPONSES = {
         "xin chào": "Xin chào! Tôi có thể giúp gì cho bạn? Tôi có thể tư vấn về sản phẩm, chính sách, hoặc hỗ trợ khách hàng.",

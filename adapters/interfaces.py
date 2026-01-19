@@ -1,21 +1,14 @@
-"""
-Abstract interfaces for the modern stack adapters.
-This allows easy switching between different backends (Redis, Cloud, etc.)
-"""
-
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Callable
 import numpy as np
 
 
 class ProductStoreError(Exception):
-    """Base exception for product store errors"""
 
     pass
 
 
 class VectorStoreInterface(ABC):
-    """Abstract interface for vector storage and similarity search"""
 
     @abstractmethod
     def store_product_embedding(
@@ -157,31 +150,19 @@ class UserBehaviorInterface(ABC):
     def get_popular_products(
         self, category: Optional[str] = None, limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """Get popular products by view count"""
         pass
 
-    # ---------------------------------------------------------
-    # Optional methods (not all backends must implement)
-    # ---------------------------------------------------------
     def get_recent_interactions(
         self,
         limit: int = 10000,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
-        """
-        Optional: Return recent interaction events (e.g., views).
-        Expected keys per item: user_id, product_id, timestamp.
-        """
         raise NotImplementedError
 
     def get_interaction_counts(
         self,
         limit: int = 50000,
     ) -> List[Dict[str, Any]]:
-        """
-        Optional: Return aggregated interaction counts for training CF models.
-        Expected keys per item: user_id, product_id, count.
-        """
         raise NotImplementedError
 
 
@@ -216,5 +197,4 @@ class ContentStoreInterface(ABC):
         offset: int = 0,
         status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List content with optional filtering"""
         pass

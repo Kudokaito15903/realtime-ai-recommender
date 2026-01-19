@@ -100,20 +100,7 @@ def train_implicit_als(
     normalization_method: str = "none",
     data_quality_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[ALSModel, sparse.csr_matrix]:
-    """
-    Train implicit-feedback ALS using the implicit library.
 
-    interactions items must include: user_id, product_id, count
-
-    Args:
-        interactions: List of interaction dicts
-        settings: ALS training settings
-        seed: Random seed
-        apply_data_quality: Whether to apply data quality checks
-        apply_normalization: Whether to apply normalization
-        normalization_method: Normalization method (none, log, minmax, zscore, sqrt)
-        data_quality_config: Optional dict with data quality settings
-    """
     from utils.data_quality import validate_interactions
     from utils.normalization import apply_normalization_to_interactions
 
@@ -134,7 +121,6 @@ def train_implicit_als(
         )
         quality_stats.log_summary()
 
-    # Apply normalization
     if apply_normalization and normalization_method != "none":
         interactions = apply_normalization_to_interactions(
             interactions,
@@ -142,7 +128,6 @@ def train_implicit_als(
             count_key="count",
         )
 
-    # Build id maps
     user_ids = sorted(
         {str(x["user_id"]) for x in interactions if x.get("user_id") is not None}
     )

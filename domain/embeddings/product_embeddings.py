@@ -68,6 +68,34 @@ class ProductEmbeddingModel:
     # =========================
 
     @staticmethod
+    def _find_spec_value(
+        specifications: List[Dict],
+        key_patterns: List[str],
+        groups: List[str] = None,
+    ) -> str:
+        """
+        Find first specification whose key contains ANY of the patterns
+        and (optionally) belongs to one of the groups.
+        """
+        if not specifications:
+            return ""
+
+        norm_patterns = [p.lower() for p in key_patterns]
+        norm_groups = [g.lower() for g in groups] if groups else None
+
+        for spec in specifications:
+            spec_key = spec.get("key", "").lower()
+            spec_group = spec.get("group", "").lower()
+
+            if norm_groups and spec_group not in norm_groups:
+                continue
+
+            if any(pat in spec_key for pat in norm_patterns):
+                return str(spec.get("value", ""))
+
+        return ""
+
+    @staticmethod
     def clean_html(html_text: str) -> str:
         """Clean HTML tags from description."""
         if not html_text:
@@ -166,6 +194,12 @@ class ProductEmbeddingModel:
         specifications = product_data.get("specifications", [])
         categories = product_data.get("categories", [])
 
+        def _cat_name(cat: Dict[str, Any]) -> str:
+            return cat.get("name", "")
+
+        def _is_root(name: str) -> bool:
+            return name.lower() == "root"
+
         # 1. Name and brand
         if name and brand:
             text_parts.append(f"{name} {brand}")
@@ -173,7 +207,9 @@ class ProductEmbeddingModel:
             text_parts.append(name)
 
         # 2. Categories (semantic meaning)
-        category_names = [cat.get("name", "") for cat in categories if cat.get("name")]
+        category_names = [
+            n for n in (_cat_name(cat) for cat in categories) if n and not _is_root(n)
+        ]
         if category_names:
             text_parts.append(f"Danh mục: {', '.join(category_names)}")
 
@@ -189,45 +225,79 @@ class ProductEmbeddingModel:
         device_type = self.normalize_device_type(categories)
 
         # Performance specs (critical for similarity)
-        cpu = self.get_spec_by_key(
-            specifications, "phiên bản cpu", "Performance"
-        ) or self.get_spec_by_key(specifications, "cpu", "Performance")
+        cpu = self._find_spec_value(
+            specifications,
+            ["phiên bản cpu", "cpu"],
+            groups=["Performance"],
+        )
         if cpu:
             text_parts.append(f"Bộ xử lý: {cpu}")
 
-        ram = self.get_spec_by_key(specifications, "dung lượng", "RAM")
+        ram = self._find_spec_value(
+            specifications,
+            ["ram", "dung lượng"],
+            groups=["RAM", "Performance"],
+        )
         if ram:
             text_parts.append(f"RAM: {ram}")
 
-        storage = self.get_spec_by_key(specifications, "dung lượng", "Storage")
+        storage = self._find_spec_value(
+            specifications,
+            ["dung lượng", "rom", "ssd"],
+            groups=["Storage"],
+        )
         if storage:
             text_parts.append(f"Bộ nhớ: {storage}")
 
         # Display specs (important for phones/laptops)
-        screen_size = self.get_spec_by_key(specifications, "kích thước", "Display")
-        screen_tech = self.get_spec_by_key(specifications, "công nghệ", "Display")
+        screen_size = self._find_spec_value(
+            specifications,
+            ["kích thước màn hình", "kích thước", "màn hình"],
+            groups=["Display"],
+        )
+        screen_tech = self._find_spec_value(
+            specifications,
+            ["công nghệ", "tấm nền"],
+            groups=["Display"],
+        )
         if screen_size or screen_tech:
             text_parts.append(f"Màn hình: {screen_size} {screen_tech}".strip())
 
         # GPU (important for laptops/PCs)
         if device_type in ["laptop", "pc"]:
-            gpu = self.get_spec_by_key(specifications, "chip đồ họa", "Graphic")
+            gpu = self._find_spec_value(
+                specifications,
+                ["chip đồ họa", "card đồ họa", "gpu"],
+                groups=["Graphic"],
+            )
             if gpu:
                 text_parts.append(f"Card đồ họa: {gpu}")
 
         # Camera (important for smartphones/tablets)
         if device_type in ["smartphone", "tablet"]:
-            camera = self.get_spec_by_key(specifications, "độ phân giải", "Camera")
+            camera = self._find_spec_value(
+                specifications,
+                ["độ phân giải", "camera"],
+                groups=["Camera"],
+            )
             if camera:
                 text_parts.append(f"Camera: {camera}")
 
         # Battery (important for mobile devices)
-        battery = self.get_spec_by_key(specifications, "dung lượng pin", "Battery")
+        battery = self._find_spec_value(
+            specifications,
+            ["dung lượng pin", "pin"],
+            groups=["Battery"],
+        )
         if battery:
             text_parts.append(f"Pin: {battery}")
 
         # OS
-        os_name = self.get_spec_by_key(specifications, "tên os", "OperatingSystem")
+        os_name = self._find_spec_value(
+            specifications,
+            ["tên os", "hệ điều hành", "os"],
+            groups=["OperatingSystem"],
+        )
         if os_name:
             text_parts.append(f"Hệ điều hành: {os_name}")
 
@@ -294,7 +364,11 @@ class ProductEmbeddingModel:
         variants = product_data.get("productVariants", [])
 
         device_type = self.normalize_device_type(categories)
-        category_names = [cat.get("name", "") for cat in categories if cat.get("name")]
+        category_names = [
+            cat.get("name", "")
+            for cat in categories
+            if cat.get("name") and cat.get("name", "").lower() != "root"
+        ]
         colors = list(set([v.get("color") for v in variants if v.get("color")]))
 
         base_metadata = {
@@ -329,30 +403,58 @@ class ProductEmbeddingModel:
         # CHUNK 2: TECHNICAL SPECIFICATIONS
         tech_parts = [f"Thông số kỹ thuật {name}:"]
 
-        cpu = self.get_spec_by_key(
-            specifications, "cpu", "Performance"
-        ) or self.get_spec_by_key(specifications, "phiên bản cpu", "Performance")
+        cpu = self._find_spec_value(
+            specifications,
+            ["phiên bản cpu", "cpu"],
+            groups=["Performance"],
+        )
         if cpu:
             tech_parts.append(f"CPU: {cpu}")
 
-        cpu_cores = self.get_spec_by_key(
-            specifications, "số nhân", "Performance"
-        ) or self.get_spec_by_key(specifications, "loại cpu", "Performance")
+        cpu_cores = self._find_spec_value(
+            specifications,
+            ["số nhân", "loại cpu"],
+            groups=["Performance"],
+        )
         if cpu_cores:
             tech_parts.append(f"Loại CPU: {cpu_cores}")
 
-        ram = self.get_spec_by_key(specifications, "dung lượng", "RAM")
+        ram = self._find_spec_value(
+            specifications,
+            ["ram", "dung lượng"],
+            groups=["RAM", "Performance"],
+        )
         if ram:
             tech_parts.append(f"RAM: {ram}")
 
-        storage = self.get_spec_by_key(specifications, "dung lượng", "Storage")
+        storage = self._find_spec_value(
+            specifications,
+            ["dung lượng", "rom", "ssd"],
+            groups=["Storage"],
+        )
         if storage:
             tech_parts.append(f"Bộ nhớ trong: {storage}")
 
-        screen_size = self.get_spec_by_key(specifications, "kích thước", "Display")
-        screen_tech = self.get_spec_by_key(specifications, "công nghệ", "Display")
-        screen_std = self.get_spec_by_key(specifications, "chuẩn", "Display")
-        resolution = self.get_spec_by_key(specifications, "độ phân giải", "Display")
+        screen_size = self._find_spec_value(
+            specifications,
+            ["kích thước màn hình", "kích thước", "màn hình"],
+            groups=["Display"],
+        )
+        screen_tech = self._find_spec_value(
+            specifications,
+            ["công nghệ màn hình", "công nghệ", "tấm nền"],
+            groups=["Display"],
+        )
+        screen_std = self._find_spec_value(
+            specifications,
+            ["chuẩn", "tần số quét"],
+            groups=["Display"],
+        )
+        resolution = self._find_spec_value(
+            specifications,
+            ["độ phân giải"],
+            groups=["Display"],
+        )
 
         if screen_size or screen_tech:
             display_text = (
@@ -362,13 +464,23 @@ class ProductEmbeddingModel:
                 display_text += f" độ phân giải {resolution}"
             tech_parts.append(display_text.strip())
 
-        gpu = self.get_spec_by_key(specifications, "chip đồ họa", "Graphic")
+        gpu = self._find_spec_value(
+            specifications,
+            ["chip đồ họa", "card đồ họa", "gpu"],
+            groups=["Graphic"],
+        )
         if gpu:
             tech_parts.append(f"Card đồ họa: {gpu}")
 
-        os_name = self.get_spec_by_key(specifications, "tên os", "OperatingSystem")
-        os_version = self.get_spec_by_key(
-            specifications, "phiên bản os", "OperatingSystem"
+        os_name = self._find_spec_value(
+            specifications,
+            ["tên os", "hệ điều hành", "os"],
+            groups=["OperatingSystem"],
+        )
+        os_version = self._find_spec_value(
+            specifications,
+            ["phiên bản os", "version"],
+            groups=["OperatingSystem"],
         )
         if os_name:
             os_text = f"Hệ điều hành: {os_name}"

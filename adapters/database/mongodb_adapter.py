@@ -192,12 +192,8 @@ class MongoDBProductStore(ProductStoreInterface):
     def __init__(self):
         try:
             self.db = _get_mongodb_db()
-            self.products = self.db.product
-            self.variants = self.db.product_variants
-
-            # Create indexes (non-blocking)
-            self._create_indexes()
-
+            self.products = self.db.products
+            self.variants = self.db.products_variants
             logger.info(
                 f"MongoDB Product Store initialized: "
                 f"{config.MONGODB_HOST}:{config.MONGODB_PORT}/{config.MONGODB_DB}"

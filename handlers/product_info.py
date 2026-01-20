@@ -169,7 +169,19 @@ Hãy cung cấp thông tin ĐẦY ĐỦ về:
                     product_ids_seen.add(product_id)
                     logger.debug(f"Hydrated product {product_id} from DB")
                 else:
-                    logger.warning(f"Product {product_id} not found in DB")
+                    logger.warning(f"Product {product_id} not found in DB, falling back to metadata")
+                    # Fallback to metadata
+                    if metadata:
+                        cleaned_text = metadata.get("text", "").replace("\n", " ").strip()
+                        products.append({
+                            "id": product_id,
+                            "name": metadata.get("product_name", "Unknown Product"),
+                            "brand": metadata.get("brand", ""),
+                            "description": cleaned_text[:300] + "..." if len(cleaned_text) > 300 else cleaned_text,
+                            "similarity_score": chunk.get("score", 0),
+                            "is_fallback": True
+                        })
+                        product_ids_seen.add(product_id)
             except Exception as e:
                  logger.error(f"Failed to fetch product {product_id}: {e}")
                  # Fallback to metadata if DB fetch fails
@@ -178,7 +190,6 @@ Hãy cung cấp thông tin ĐẦY ĐỦ về:
                          "id": product_id,
                          "name": metadata.get("product_name", "Unknown"),
                          "description": metadata.get("text", ""),
-                         # Minimum struct
                      })
                      product_ids_seen.add(product_id)
         
